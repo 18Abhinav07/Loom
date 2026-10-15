@@ -1,7 +1,7 @@
 """E5: real multi-agent bench — plan building, per-agent oracles on a tree, summary."""
 from pathlib import Path
 
-from e5.run import agent_env, check, plan_for, summarize
+from e5.run import agent_env, check, plan_for, summarize, verdict
 from e5.scenarios import RULES, SCENARIOS, Agent
 
 
@@ -49,3 +49,15 @@ def test_summarize_counts_full_success_per_condition():
     assert out.splitlines()[1].split()[:4] == ["blind", "1", "0/1", "1/2"]
     assert out.splitlines()[2].split()[:4] == ["loom", "2", "1/2", "3/3"]
     assert out.splitlines()[2].split()[-1] == "0/1"          # integration column: team records only
+
+
+def test_verdict_a_conflict_fails_every_agent():
+    v = verdict(conflict="a.py", tests_passed=None, merged={"a": True, "b": True}, integration=None)
+    assert v["agents_ok"] == 0 and v["all_pass"] is False and v["failed"] == ["a", "b"]
+
+
+def test_verdict_agent_ok_only_from_the_full_final_merge():
+    v = verdict(conflict=None, tests_passed=True, merged={"a": True, "b": False}, integration=None)
+    assert v["agents_ok"] == 1 and v["all_pass"] is False and v["failed"] == ["b"]
+    assert verdict(conflict=None, tests_passed=True, merged={"a": True}, integration=False)["all_pass"] is False
+    assert verdict(conflict=None, tests_passed=True, merged={"a": True}, integration=None)["all_pass"] is True

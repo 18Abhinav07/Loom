@@ -132,10 +132,17 @@ def run_cond(sc: Scenario, cond: str, out: Path, model: str) -> dict:
     return grade(sc, cond, repo, rep, wall)
 
 
+def verdict(conflict, tests_passed, merged: dict, integration) -> dict:
+    """Judged on the run's full final merge only: with a conflict nothing merged, so every agent failed."""
+    failed = sorted(merged) if conflict else sorted(k for k, ok in merged.items() if not ok)
+    return {"agents_ok": len(merged) - len(failed), "failed": failed,
+            "all_pass": not conflict and bool(tests_passed) and not failed and integration is not False}
+
+
 def grade(sc: Scenario, cond: str, repo: Path, rep: dict, wall: float) -> dict:
     run = rep["run"]
     run8 = re.sub(r"[^\w-]", "", run)[-8:]
-    merged_tree = repo / ".loom" / "wt" / run8 / "_merge"
+    merged_tree = repo / ".loom" / "wt" / run8 / "_merge"   # v1: the end merge of every branch; v2: a worktree of the landed branch
     tdir = repo / ".loom" / "runs" / re.sub(r"[^\w.-]+", "_", run)
     workers = {w["agent"]: w for w in rep["workers"]}
     notices = _get(f"/runs/{urllib.parse.quote(run, safe='')}/notices") if cond == "loom" else []
@@ -159,8 +166,7 @@ def grade(sc: Scenario, cond: str, repo: Path, rep: dict, wall: float) -> dict:
     return {"scenario": sc.id, "kind": sc.kind, "cond": cond, "run": run, "wall_s": wall,
             "conflict": conflict, "tests_passed": rep["merge"]["testsPassed"],
             "integration": integ[0] if sc.integration else None, "integration_err": integ[1][-300:],
-            "all_pass": not conflict and bool(rep["merge"]["testsPassed"]) and all(x["merged"] for x in agents.values())
-                        and integ[0] is not False,
+            **verdict(conflict, rep["merge"]["testsPassed"], {k: x["merged"] for k, x in agents.items()}, integ[0]),
             "broken": sum(1 for x in agents.values() if x["solo"] and not x["merged"]),
             "agents": agents, "tests_tail": rep["merge"]["testOutputTail"][-600:]}
 
@@ -177,7 +183,7 @@ def summarize(recs: list[dict]) -> str:
             continue
         ag = [x for r in rs for x in r["agents"].values()]
         lines.append(f"{cond:6} {len(rs)}  {sum(r['all_pass'] for r in rs)}/{len(rs)}  "
-                     f"{sum(x['merged'] for x in ag)}/{len(ag)}  {sum(r['broken'] for r in rs)}  "
+                     f"{sum(verdict(r['conflict'], True, {k: x['merged'] for k, x in r['agents'].items()}, None)['agents_ok'] for r in rs)}/{len(ag)}  {sum(r['broken'] for r in rs)}  "
                      f"{sum(bool(r['conflict']) for r in rs)}  {sum(r['wall_s'] for r in rs):.0f}  "
                      f"{sum(x.get('cost_usd', 0) for x in ag):.2f}  {sum(x.get('turns', 0) for x in ag)}  "
                      f"{sum(bool(r.get('integration')) for r in rs if r.get('integration') is not None)}"
