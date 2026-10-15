@@ -1,0 +1,9 @@
+# Deployed demo (spec §4.4): read-only replay. Service variables to set in Railway (config-as-code does not carry them):
+#   LOOM_READONLY=1  LOOM_TENANT=public  LOOM_AUTOREPLAY=demo/run-1  FALKORDB_URL=redis://<falkordb service>:6379
+# Railway's $PORT becomes the dashboard port; the API stays on the private 4318 and refuses every write but /replay.
+[build]
+builder = "DOCKERFILE"
+
+[deploy]
+healthcheckPath = "/runs"
+restartPolicyType = "ON_FAILURE"
