@@ -1,0 +1,14 @@
+{
+  "name": "@loom/daemon",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@loom/core": "workspace:*",
+    "@loom/indexer": "workspace:*",
+    "@loom/planner": "workspace:*"
+  }
+}
