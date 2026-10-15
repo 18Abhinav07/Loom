@@ -209,7 +209,7 @@ export class Coordinator {
   sweep(at = now()): Promise<void> {
     return this.serial(async () => {
       const byAgent = new Map<string, string[]>();
-      for (const x of await expired(this.g, at)) byAgent.set(x.agent, [...(byAgent.get(x.agent) ?? []), x.symbol]);
+      for (const x of await expired(this.g, at, 'Symbol')) byAgent.set(x.agent, [...(byAgent.get(x.agent) ?? []), x.symbol]);
       for (const [a, sids] of byAgent) { this.emit('lease.released', a, { symbols: sids, why: 'lapsed' }); await this.wake(a, sids, 'lapsed'); }
     });
   }
@@ -315,7 +315,7 @@ export class Coordinator {
 
   forceRelease(agent: string): Promise<string[]> {
     return this.serial(async () => {
-      const ids = await release(this.g, agent);
+      const ids = await release(this.g, agent, undefined, 'Symbol');
       this.emit('lease.released', agent, { symbols: ids, forced: true });
       await this.wake(agent, ids, 'lapsed');
       return ids;
@@ -361,18 +361,18 @@ export class Coordinator {
   async lease(agent: string, sids: string[], mode: LeaseMode) {
     const known = sids.filter((s) => this.known.has(s));
     if (!known.length) return { granted: false, holders: [], reason: 'no such symbols in this run' };
-    if (await acquire(this.g, agent, known, mode, await this.task(agent))) {
+    if (await acquire(this.g, agent, known, mode, await this.task(agent), undefined, undefined, 'Symbol')) {
       this.emit('lease.granted', agent, { symbols: known, mode });
       return { granted: true, symbols: known };
     }
-    const hs = await holders(this.g, agent, known, mode);
+    const hs = await holders(this.g, agent, known, mode, undefined, 'Symbol');
     this.emit('lease.denied', agent, { symbols: known, mode, holder: hs[0]?.holder, reason: 'mcp' });
     return { granted: false, holders: hs };
   }
 
   release(agent: string, sids?: string[]): Promise<string[]> {
     return this.serial(async () => {
-      const ids = await release(this.g, agent, sids);
+      const ids = await release(this.g, agent, sids, 'Symbol');
       if (ids.length) { this.emit('lease.released', agent, { symbols: ids }); await this.wake(agent, ids, 'lapsed'); }
       return ids;
     });
@@ -495,12 +495,12 @@ export class Coordinator {
     const { sids, mode } = await predictLease(it.file, current, next);
     const known = sids.filter((s) => this.known.has(s));
     if (!mode || !known.length) return { allow: true };
-    if (await acquire(this.g, agent, known, mode, await this.task(agent))) {
+    if (await acquire(this.g, agent, known, mode, await this.task(agent), undefined, undefined, 'Symbol')) {
       this.emit('lease.granted', agent, { symbols: known, mode });
       return { allow: true };
     }
     const reason = await this.denyReason(agent, known, mode);
-    const hs = await holders(this.g, agent, known, mode);
+    const hs = await holders(this.g, agent, known, mode, undefined, 'Symbol');
     const [h] = hs;
     // a denial is a wait: when the holder lands, wake() tells this agent (and `loom run` resumes it on the merged code)
     await this.g.query(`MATCH (b:Agent {id: $agent}) UNWIND $sids AS sid MATCH (s:Symbol {id: sid}) MERGE (b)-[w:WAITS_ON]->(s) SET w.at = $t`,
@@ -510,7 +510,7 @@ export class Coordinator {
   }
 
   private async denyReason(agent: string, sids: string[], mode: LeaseMode): Promise<string> {
-    const hs = await holders(this.g, agent, sids, mode);
+    const hs = await holders(this.g, agent, sids, mode, undefined, 'Symbol');
     const out = ['[loom] edit blocked before it happened:'];
     for (const h of hs) {
       const [ch] = await this.g.query<{ before: string; after: string }>(`MATCH (c:Change {agent: $a, symbol: $s})

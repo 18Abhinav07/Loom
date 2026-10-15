@@ -21,7 +21,7 @@ const grants = new Map<string, Grant[]>();
 
 const admin = await LoomDb.connect();
 const g0 = admin.graph(run);
-await g0.query(`UNWIND range(0, $n - 1) AS i CREATE (:Symbol {id: 's' + toString(i)})`, { n: SYMBOLS });
+await g0.query(`UNWIND range(0, $n - 1) AS i CREATE (:Region {id: 's' + toString(i)})`, { n: SYMBOLS });
 await g0.query(`UNWIND range(0, $n - 1) AS i CREATE (:Agent {id: 'a' + toString(i)})`, { n: AGENTS });
 
 let attempts = 0, granted = 0, denied = 0, graphViolations = 0;
@@ -51,14 +51,14 @@ async function worker(i: number) {
 
 async function reader() {
   const db = await LoomDb.connect(); const g = db.graph(run);
-  while (!done) { const t = performance.now(); await g.query(`MATCH (a:Agent)-[l:LEASED]->(s:Symbol) RETURN count(l)`); readLat.push(performance.now() - t); }
+  while (!done) { const t = performance.now(); await g.query(`MATCH (a:Agent)-[l:LEASED]->(s:Region) RETURN count(l)`); readLat.push(performance.now() - t); }
   await db.close();
 }
 
 async function crossCheck() {
   const db = await LoomDb.connect(); const g = db.graph(run);
   while (!done) {
-    const [r] = await g.query<{ n: number }>(`MATCH (s:Symbol)<-[l:LEASED]-() WITH s, collect(l.mode) AS m, count(l) AS n
+    const [r] = await g.query<{ n: number }>(`MATCH (s:Region)<-[l:LEASED]-() WITH s, collect(l.mode) AS m, count(l) AS n
       WHERE n > 1 AND (size([x IN m WHERE x = 'write']) > 1 OR size([x IN m WHERE x = 'contract']) > 1) RETURN count(s) AS n`);
     graphViolations += r?.n ?? 0;
     await sleep(100);

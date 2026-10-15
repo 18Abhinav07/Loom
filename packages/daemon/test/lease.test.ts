@@ -6,7 +6,7 @@ let db: LoomDb; let g: LoomGraph;
 beforeEach(async () => {
   db = await LoomDb.connect(); g = db.graph(`test:lease:${Date.now()}:${Math.random()}`);
   await g.query(`UNWIND ['A','B','C'] AS id CREATE (:Agent {id: id})`);
-  await g.query(`UNWIND ['a','b'] AS id CREATE (:Symbol {id: id})`);
+  await g.query(`UNWIND ['a','b'] AS id CREATE (:Region {id: id})`);
 });
 afterEach(async () => { await g.drop(); await db.close(); });
 
@@ -17,7 +17,7 @@ test('spec 5.2 outcomes, all-or-nothing, matrix', async () => {
   expect(await acquire(g, 'A', ['a'], 'write', 't')).toBe(0);              // write vs C's write
   expect(await acquire(g, 'C', ['b'], 'write', 't')).toBe(1);
   expect(await acquire(g, 'B', ['a', 'b'], 'contract', 't')).toBe(0);      // b held by C: nothing written
-  const [r] = await g.query<{ n: number }>(`MATCH (:Agent {id:'B'})-[l:LEASED]->(:Symbol {id:'b'}) RETURN count(l) AS n`);
+  const [r] = await g.query<{ n: number }>(`MATCH (:Agent {id:'B'})-[l:LEASED]->(:Region {id:'b'}) RETURN count(l) AS n`);
   expect(r.n).toBe(0);
   expect(await acquire(g, 'B', ['a'], 'contract', 't')).toBe(1);           // a body write admitted under B's contract never locks B out of it
   expect(await acquire(g, 'A', ['a'], 'contract', 't')).toBe(0);           // ...but still blocks a contract B does not hold

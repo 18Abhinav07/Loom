@@ -1,0 +1,1 @@
+S1 agents=32 ops=6400 grants=4593 double_grants=0 p50_ms=4.5 p99_ms=9.4
