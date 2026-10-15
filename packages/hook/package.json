@@ -1,0 +1,6 @@
+{
+  "name": "@loom/hook",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": { "build": "esbuild src/loom-hook.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/loom-hook.cjs" }
+}
