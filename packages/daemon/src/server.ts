@@ -18,6 +18,8 @@ import { BenchRun, type BenchRunner } from './benchrun.js';
 import { llmPlan, partition, scope, validatePlan, type PlanTask } from '@loom/planner';
 import { renderWhy, why } from './why.js';
 import { filePatch, replay, type ReplayProgress } from './replay.js';
+import { resolveRepo } from './repo.js';
+import { finishSession, gitTry, lessonsFor, startSession } from '@loom/memory';
 
 const PY_PATH = /[\w./-]+\.py\b/g;
 
@@ -38,12 +40,13 @@ const DIST = resolve(import.meta.dirname ?? '.', '../../../apps/dashboard/dist')
 const BENCH = resolve(import.meta.dirname ?? '.', '../../../bench/results');
 const DEMO = resolve(import.meta.dirname ?? '.', '../../../demo');
 
-export async function startServer(opts: { port: number; db: LoomDb; uiPort?: number | null; recordDir?: string; distDir?: string; lessonsGraph?: string; benchDir?: string;
+export async function startServer(opts: { port: number; db: LoomDb; uiPort?: number | null; recordDir?: string; distDir?: string; benchDir?: string;
   /** Spec §4.4 deployed mode: every write route refuses except /replay of a recording under `replayRoots`. */
   readOnly?: boolean; tenant?: string; replayRoots?: string[]; host?: string;
   /** Story's launcher and showcase: the bench dir it runs E1 in, how it spawns, the recording "Watch 3 real agents" replays. */
   benchRoot?: string; benchRunner?: BenchRunner; demoRun?: string }) {
-  const lessons = new Lessons(opts.db.graph(opts.lessonsGraph ?? process.env.LOOM_LESSONS_GRAPH ?? 'lessons'));
+  /** C1 fixed: a run's lessons live in that run's own graph; no graph is shared between runs or tenants. P3 moves runs into the repo graph. */
+  const lessonsOf = (run: string) => new Lessons(opts.db.graph(run));
   const runs = new Map<string, Coordinator>();
   const traces = new Map<string, TraceWriter>();
   const timers: NodeJS.Timeout[] = [];
@@ -82,7 +85,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     if (runs.has(id)) return { c: runs.get(id)!, root: at?.root ?? cwd ?? '' };
     if (!at) return null;
     if (!loading.has(id)) loading.set(id, (async () => {
-      const c = await Coordinator.create(opts.db.graph(id), id, bus, lessons);
+      const c = await Coordinator.create(opts.db.graph(id), id, bus, lessonsOf(id));
       await c.indexBase(at.mainRoot, at.dirs);
       addRun(id, c);
       return c;
@@ -137,7 +140,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       case 'ack_notice': return c.ackNotice(agent, String(a.id), /no[\s_-]*(impact|change)/i.test(String(a.how ?? '')) ? 'no-impact' : 'adapted');
       case 'record_decision': return { id: await c.recordDecision(agent, String(a.text ?? a.decision ?? ''), a.symbols ?? []) };
       case 'why': { const r = await why(opts.db.graph(c.run), String(a.symbol)); return { ...r, text: renderWhy(r) }; }
-      case 'lessons': return a.scope ? lessons.list(String(a.scope)) : lessons.about(await c.lessonScope(agent), 10);
+      case 'lessons': return !c.lessons ? [] : a.scope ? c.lessons.list(String(a.scope)) : c.lessons.about(await c.lessonScope(agent), 10);
       case 'claim_done': return c.claimDone(agent, String(a.task), a.evidence ?? '');
       default: throw new Error(`unknown tool ${tool}`);
     }
@@ -179,6 +182,18 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       if (req.method === 'POST' && parts[0] === 'hook' && parts[1] === 'claude') {
         try {   // spec §6: hooks fail open, never a 500
           const input: ClaudeHookInput = await body(req);
+          if ((parts[2] === 'SessionStart' || parts[2] === 'SessionEnd') && !req.headers['x-loom-run']) {   // P2: an interactive session in a loom repo
+            const repo = await resolveRepo(opts.db, input.cwd ?? '', req.headers['x-loom-home'] as string | undefined);
+            if (repo) {
+              if (parts[2] === 'SessionStart') {
+                const person = gitTry(repo.top, 'config', 'user.email') ?? 'unknown';
+                const { briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive' });
+                return send(200, { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: briefing } });
+              }
+              await finishSession(repo.graph, repo.top, { transcriptPath: (input as any).transcript_path });
+              return send(200, {});
+            }
+          }
           const r = await runFor(String(req.headers['x-loom-run'] ?? ''), input.cwd);
           const agent = String(req.headers['x-loom-agent'] ?? '') || (input.session_id ? `claude-${input.session_id.slice(0, 8)}` : '');
           if (r) {   // edits also carry their diff, so a replay can redo Bash edits that left no edit strings
@@ -240,12 +255,19 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         const c = runs.get(u.searchParams.get('run') ?? '');
         return c ? send(200, c.plan ?? { tasks: [], hubs: [], hubOwner: {} }) : send(404, { error: 'run not loaded' });
       }
-      if (u.pathname === '/lessons') {                                 // loom lesson add | list | rm; lessons are global, not per run
+      if (req.method === 'GET' && u.pathname === '/repo/lessons') {   // I1: the graph comes from the caller's cwd + tenant, never from the request
+        const repo = await resolveRepo(opts.db, String(req.headers['x-loom-cwd'] ?? ''), req.headers['x-loom-home'] as string | undefined);
+        return send(200, repo ? await lessonsFor(repo.graph, [String(u.searchParams.get('region') ?? '')], 10) : []);
+      }
+      if (u.pathname === '/lessons') {                                 // loom lesson add | list | rm; a run's lessons live in that run's graph
+        const b = req.method === 'POST' ? await body(req) : {};
+        const run = String(b.run ?? u.searchParams.get('run') ?? '');
+        if (!run) return send(400, { error: 'run required' });
+        const lessons = lessonsOf(run);
         if (req.method === 'GET') return send(200, { lessons: await lessons.list(u.searchParams.get('symbol') ?? undefined) });
         if (req.method === 'POST') {
-          const b = await body(req);
           if (!Array.isArray(b.symbols) || !b.symbols.length || !b.text) return send(400, { error: 'symbols[] and text required' });
-          return send(200, await lessons.record('manual', b.symbols.map(String), String(b.text), String(b.run ?? '')));
+          return send(200, await lessons.record('manual', b.symbols.map(String), String(b.text), run));
         }
         if (req.method === 'DELETE') return send(200, { removed: await lessons.rm(u.searchParams.get('id') ?? '') });
       }
@@ -253,7 +275,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         const b = await body(req);
         const repo = b.repo ?? resolveAttach(b.cwd ?? '')?.mainRoot;
         if (!b.run || !b.a || !b.b || !repo) return send(400, { error: 'run, a, b and repo (or an attached cwd) required' });
-        try { return send(200, await mergeCheck(opts.db, b.run, b.a, b.b, { repo, cfg: cfgFor(repo), lessons })); }
+        try { return send(200, await mergeCheck(opts.db, b.run, b.a, b.b, { repo, cfg: cfgFor(repo), lessons: lessonsOf(b.run) })); }
         catch (e) { if (e instanceof UnknownSide) return send(400, { error: e.message }); throw e; }
       }
       if (req.method === 'POST' && u.pathname === '/verify') {       // loom verify: re-run every claim's evidence (or one task's)
@@ -277,7 +299,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         const b = await body(req);
         record(b.run, u.pathname, b);
         // bench and replay runs pass lessons:false: they measure notices alone and must not depend on what earlier runs left
-        const c = await Coordinator.create(opts.db.graph(b.run), b.run, bus, b.lessons === false ? undefined : lessons);
+        const c = await Coordinator.create(opts.db.graph(b.run), b.run, bus, b.lessons === false ? undefined : lessonsOf(b.run));
         if (!baseCache.has(b.baseKey)) baseCache.set(b.baseKey, new Map());
         const stats = await c.indexBase(b.root, b.dirs, baseCache.get(b.baseKey));
         addRun(b.run, c);
@@ -372,7 +394,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       if (u.pathname === '/timeline') return timeline(run);
       if (u.pathname === '/why') { const r = await why(opts.db.graph(run), u.searchParams.get('target') ?? ''); return { ...r, text: renderWhy(r) }; }
       if (u.pathname === '/claims') return { claims: await (runs.get(run)?.claims() ?? []) };
-      if (u.pathname === '/lessons') return { lessons: await lessons.list(u.searchParams.get('symbol') ?? undefined) };
+      if (u.pathname === '/lessons') return { lessons: run ? await lessonsOf(run).list(u.searchParams.get('symbol') ?? undefined) : [] };
       if (u.pathname === '/bench') return bench();
       if (u.pathname !== '/plan') return undefined;
       const c = runs.get(run);

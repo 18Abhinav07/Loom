@@ -65,18 +65,19 @@ test('pending notice at Stop blocks with the notice as reason', async () => {
   expect(out.reason).toContain('renamed to');
 });
 
-test('a bench run (lessons: false) is never told earlier runs\' lessons; a default run is', async () => {
-  await post('/lessons', { symbols: ['django/utils/text.py::phone2numeric'], text: 'LESSON-MARKER', run: 'old' });
-  const told = async (r: string, lessons?: boolean) => {
+test('lessons stay in their run graph (C1 fixed); a bench run (lessons: false) is never told any', async () => {
+  const told = async (r: string, lessonRun: string, lessons?: boolean) => {
     const wc = tree(TEXT);
     await post('/admin/runs', { run: r, root: tree(TEXT), dirs: ['django'], baseKey: 'k', ...(lessons === undefined ? {} : { lessons }) });
+    await post('/lessons', { symbols: ['django/utils/text.py::phone2numeric'], text: 'LESSON-MARKER', run: lessonRun });
     const h = (event: string, b: unknown) => post(`/hook/claude/${event}`, b, { 'x-loom-agent': 'C', 'x-loom-run': r }).then((x) => x.text());
     await h('SessionStart', { hook_event_name: 'SessionStart', cwd: wc, session_id: 'c' });
     const out = await h('PostToolUse', { hook_event_name: 'PostToolUse', cwd: wc, tool_name: 'Read',
       tool_input: { file_path: join(wc, 'django/utils/text.py') }, tool_response: {} });
-    await db.graph(r).drop();
+    await db.graph(r).drop(); if (lessonRun !== r) await db.graph(lessonRun).drop().catch(() => {});
     return out.includes('LESSON-MARKER');
   };
-  expect(await told(`${run}:bench`, false)).toBe(false);
-  expect(await told(`${run}:user`)).toBe(true);
+  expect(await told(`${run}:bench`, `${run}:bench`, false)).toBe(false);
+  expect(await told(`${run}:other`, `${run}:old`)).toBe(false);          // v1 leaked here: one global graph for every run
+  expect(await told(`${run}:user`, `${run}:user`)).toBe(true);
 });

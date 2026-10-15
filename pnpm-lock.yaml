@@ -63,12 +63,24 @@ importers:
       '@loom/daemon':
         specifier: workspace:*
         version: link:../daemon
+      '@loom/indexer':
+        specifier: workspace:*
+        version: link:../indexer
+      '@loom/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@loom/planner':
         specifier: workspace:*
         version: link:../planner
       falkordb:
         specifier: 6.8.0
         version: 6.8.0
+      tree-sitter-wasms:
+        specifier: 0.1.13
+        version: 0.1.13
+      web-tree-sitter:
+        specifier: 0.22.6
+        version: 0.22.6
 
   packages/core:
     dependencies:
@@ -84,6 +96,9 @@ importers:
       '@loom/indexer':
         specifier: workspace:*
         version: link:../indexer
+      '@loom/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@loom/planner':
         specifier: workspace:*
         version: link:../planner
@@ -95,12 +110,19 @@ importers:
       '@loom/core':
         specifier: workspace:*
         version: link:../core
+      diff:
+        specifier: 5.2.0
+        version: 5.2.0
       tree-sitter-wasms:
         specifier: 0.1.13
         version: 0.1.13
       web-tree-sitter:
         specifier: 0.22.6
         version: 0.22.6
+    devDependencies:
+      '@types/diff':
+        specifier: 5.2.3
+        version: 5.2.3
 
   packages/mcp:
     dependencies:
@@ -117,6 +139,15 @@ importers:
       '@loom/daemon':
         specifier: workspace:*
         version: link:../daemon
+
+  packages/memory:
+    dependencies:
+      '@loom/core':
+        specifier: workspace:*
+        version: link:../core
+      '@loom/indexer':
+        specifier: workspace:*
+        version: link:../indexer
 
   packages/planner:
     dependencies:
@@ -841,6 +872,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@types/diff@5.2.3':
+    resolution: {integrity: sha512-K0Oqlrq3kQMaO2RhfrNQX5trmt+XLyom88zS0u84nnIcLvFnRUMRRHmrGny5GSM+kNO9IZLARsdQHDzkhAgmrQ==}
+
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
@@ -1005,6 +1039,10 @@ packages:
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
+
+  diff@5.2.0:
+    resolution: {integrity: sha512-uIFDxqpRZGZ6ThOk84hEfqWoHx2devRFvpTZcTHur85vImfaxUbTW9Ryh4CpCuDnToOP1CEtXKIgytHBPVff5A==}
+    engines: {node: '>=0.3.1'}
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -2059,6 +2097,8 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.64.6':
     optional: true
 
+  '@types/diff@5.2.3': {}
+
   '@types/estree@1.0.9': {}
 
   '@types/node@22.10.1':
@@ -2212,6 +2252,8 @@ snapshots:
   depd@2.0.0: {}
 
   detect-libc@2.1.2: {}
+
+  diff@5.2.0: {}
 
   dunder-proto@1.0.1:
     dependencies:

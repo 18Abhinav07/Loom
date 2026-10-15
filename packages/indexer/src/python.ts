@@ -4,7 +4,9 @@ import Parser from 'web-tree-sitter';
 import type { CallRec, FileIndex, ParamSpec, SymbolRec } from '@loom/core';
 
 type Node = Parser.SyntaxNode;
-const require = createRequire(import.meta.url);
+declare const __filename: string;
+// import.meta.url is undefined inside the CLI's CJS bundle
+const require = createRequire(import.meta.url ?? __filename);
 let parserP: Promise<Parser> | null = null;
 
 function parser(): Promise<Parser> {

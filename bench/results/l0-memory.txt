@@ -1,0 +1,78 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.8 /Users/18abhinav07/Documents/loom-v2
+
+ ✓ packages/memory/test/ids.test.ts (4 tests) 500ms
+   ✓ repoId: refuses a repo with no commits; smallest root sha with two roots 376ms
+ ✓ packages/memory/test/events.test.ts (3 tests) 489ms
+   ✓ two writers on two branches merge without conflict; one file on two branches unions 409ms
+ ✓ packages/memory/test/indexrepo.test.ts (3 tests) 810ms
+   ✓ indexRepo writes Regions, CODE edges, the lock, and one baseline Version per region at HEAD 306ms
+[loom] session records not committed: `loom finish --commit` commits only .loom/
+ ✓ packages/memory/test/lessons.test.ts (2 tests) 1024ms
+   ✓ a lesson is a .loom event and a graph node ON the region; it only exists in its own repo graph (C1) 387ms
+   ✓ startSession writes session+agent events and the active file; finishSession writes a handoff from the transcript and clears it 636ms
+stdout | packages/memory/test/sync.test.ts > X2 mechanics: B learns of A's pushed change and decision BEFORE pulling
+[loom] Since your last sync (0cf2523 → 0cf2523; upstream origin/main +0), 0 people, 0 sessions:
+- Degraded: none.
+Ask: history(region) · why(region) · changes_since(commit)
+
+ ✓ packages/daemon/test/i1.test.ts (2 tests) 1206ms
+   ✓ I1: two tenants on the same repo get two graphs; lessons and briefings never cross; C1 lesson leak is closed 1071ms
+stdout | packages/memory/test/sync.test.ts > X2 mechanics: B learns of A's pushed change and decision BEFORE pulling
+[loom] Since your last sync (0cf2523 → 0cf2523; upstream origin/main +1), 1 people, 1 sessions:
+- slugify (pkg/text.py) changed on origin/main by A@t/main for T4 — not in your branch yet. [01M4ZGP71A1ESXYBQVGXWMSVXE]
+  Decision: "strict is keyword-only".
+- Degraded: none.
+Ask: history(region) · why(region) · changes_since(commit)
+
+ ✓ packages/memory/test/reconcile.test.ts (3 tests) 1491ms
+   ✓ a commit made outside Loom becomes an external Version BY the git author; idempotent 599ms
+   ✓ a region already versioned by a .loom event in that commit gets no external version 393ms
+   ✓ past the cap: one external version per region for the whole range, by "N authors" 498ms
+ ✓ packages/memory/test/importer.test.ts (5 tests) 1757ms
+   ✓ import is idempotent and maps events to nodes and edges 383ms
+   ✓ commit association: committed line → its commit; uncommitted → []; after amend the new sha joins commits[] 412ms
+   ✓ import from a ref reads records with git show, without checking it out 340ms
+   ✓ current per ref: diverged branches each see their own version 387ms
+ ✓ packages/memory/test/commit.test.ts (6 tests) 1919ms
+   ✓ pre-commit versions the INDEX text (partial staging), stages the session file and the lock 548ms
+   ✓ real commit through installed hooks: post-commit links versions to the Commit and moves HEAD 483ms
+stdout | packages/memory/test/sync.test.ts > fresh init: news is only the latest handoff of each other person
+[loom] Since your last sync (8124b28 → 8124b28; upstream origin/main +0), 1 people, 1 sessions:
+- Handoff from A@t: handoff 1 [01M4ZGP7Q1F99GR93N34BEV3GC]
+- Degraded: none.
+Ask: history(region) · why(region) · changes_since(commit)
+
+ ✓ packages/hook/test/failopen.test.ts (1 test) 2431ms
+   ✓ hook fails open within the 2 s budget when the daemon hangs 2430ms
+[loom] pre-commit hook failed; continuing
+[loom] post-commit hook failed; continuing
+ ✓ packages/memory/test/githooks.test.ts (4 tests) 4819ms
+   ✓ installs five hooks; an existing hook is kept as .pre-loom and runs before loom; idempotent 1643ms
+   ✓ post-rewrite: the rewrite map on stdin reaches both the old hook and loom 1833ms
+   ✓ core.hooksPath (husky): hooks go into that directory; a failing loom never blocks the commit 891ms
+   ✓ an existing hook that fails still blocks the commit (we do not swallow the user's hook) 451ms
+[loom] fetch origin/main failed (spawnSync git ETIMEDOUT); syncing locally
+stdout | packages/memory/test/sync.test.ts > offline: fetch to an unreachable remote is bounded (≤ 6 s) and sync still completes
+[loom] Since your last sync (56e51ab → 56e51ab; upstream origin/main +0), 0 people, 0 sessions:
+- Degraded: none.
+Ask: history(region) · why(region) · changes_since(commit)
+
+ ✓ packages/memory/test/sync.test.ts (4 tests) 7331ms
+   ✓ X2 mechanics: B learns of A's pushed change and decision BEFORE pulling 1459ms
+   ✓ fresh init: news is only the latest handoff of each other person 601ms
+   ✓ offline: fetch to an unreachable remote is bounded (≤ 6 s) and sync still completes 5269ms
+ ✓ packages/memory/test/l0-memory.test.ts (7 tests) 9480ms
+   ✓ 1. A commits a session edit through the real hooks: the version event is in the commit; Version.commits = [sha] 732ms
+   ✓ 3. B pulls: post-merge moves Region.HEAD to A's version; the briefing stops saying "not in your branch yet" 572ms
+   ✓ 4. B commits on slugify with --no-verify: A's next sync makes ext:<sha>:slugify BY B@t 1072ms
+   ✓ 5. diverging branches, one session file each: merge has no conflict; import counts every event once 2504ms
+   ✓ 6. A rebases: the rebased sha joins commits[]; current-per-ref on the rebased HEAD finds A's version 2321ms
+   ✓ 7. FalkorDB unreachable: git commit still succeeds and says [loom] … continuing 371ms
+
+ Test Files  12 passed (12)
+      Tests  44 passed (44)
+   Start at  15:40:53
+   Duration  10.28s (transform 596ms, setup 0ms, collect 5.08s, tests 33.26s, environment 1ms, prepare 807ms)
+

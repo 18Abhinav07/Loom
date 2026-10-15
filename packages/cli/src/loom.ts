@@ -3,17 +3,22 @@ import { execFileSync, spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { LoomDb } from '@loom/core';
+import { LoomDb, type LoomGraph } from '@loom/core';
 import { loadPlan } from '@loom/planner';
+import { regionsCmd } from './regions.js';
 import { exitCode, runPlan } from './run.js';
-import { resolveAttach } from '@loom/daemon';
+import { resolveAttach, resolveRepo } from '@loom/daemon';
+import { addLesson, DEFAULT_EXCLUDES, ensureLoomDir, finishSession, gitTry, graphName, importSessions, indexRepo, installGitHooks, lessonsFor,
+  postCommit, preCommit, readActive, readConfig, reconcile, repoId, sync, type LoomConfig } from '@loom/memory';
 
 const DAEMON = process.env.LOOM_URL ?? 'http://127.0.0.1:4318';
 const UI = process.env.LOOM_UI ?? 'http://127.0.0.1:4317';
 const HOME = join(homedir(), '.loom');
 const SKIP = new Set(['node_modules', 'venv', '.venv']);
-const EVENTS: [string, string | undefined][] = [
-  ['SessionStart', undefined], ['UserPromptSubmit', undefined], ['PreToolUse', 'Edit|Write|MultiEdit'], ['PostToolUse', '*'], ['Stop', undefined]];
+// Bash is in the PreToolUse matcher: an agent named it as the way round an Edit deny (S-22). The pre-commit hook stays the hard check.
+// UserPromptSubmit and Stop stay while the v1 run mode serves them (server.ts onHook).
+const EVENTS: [string, string | undefined][] = [['SessionStart', undefined], ['UserPromptSubmit', undefined],
+  ['PreToolUse', 'Edit|Write|MultiEdit|NotebookEdit|Bash'], ['PostToolUse', '*'], ['Stop', undefined], ['SessionEnd', undefined]];
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 /** fetch threw: the daemon is down only when the connection was refused; a long verify can also hit the 300 s client timeout. */
@@ -48,7 +53,7 @@ export function exclude(mainRoot: string, lines: string[]) {
     if (!cur.split('\n').includes(line)) appendFileSync(ex, `${cur && !cur.endsWith('\n') ? '\n' : ''}${line}\n`);
 }
 
-/** The five Claude hooks, merged into a settings file next to whatever hooks it already has. */
+/** The Claude hooks, merged into a settings file next to whatever hooks it already has. */
 export function mergeHooks(sp: string, hookCmd: string) {
   const s = existsSync(sp) ? JSON.parse(readFileSync(sp, 'utf8')) : {};
   s.hooks ??= {};
@@ -61,27 +66,51 @@ export function mergeHooks(sp: string, hookCmd: string) {
   writeFileSync(sp, JSON.stringify(s, null, 2) + '\n');
 }
 
-export function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: string }) {
+/** The test command a run verifies with, guessed from the repo's own manifests; null when there is none. */
+export function detectTestCmd(root: string): string | null {
+  if (existsSync(join(root, 'pyproject.toml')) || existsSync(join(root, 'setup.cfg'))) return 'python -m pytest -q';
+  const pj = join(root, 'package.json');
+  try { if (existsSync(pj) && JSON.parse(readFileSync(pj, 'utf8')).scripts?.test) return 'npm test'; } catch { /* not JSON */ }
+  return null;
+}
+
+/** §6.1: repoId, .loom/, regions + lock + baseline, git hooks, Claude hooks, then whatever sessions the clone already carries. */
+export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: string; loomCmd: string; tenant?: string; testCmd?: string; db?: LoomDb }) {
   const top = git(cwd, 'rev-parse', '--show-toplevel');
   const common = git(cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir');
   if (git(common, 'rev-parse', '--is-bare-repository') === 'true')
     throw new Error(`${common} is a bare repository: loom needs a normal clone (its checkout is the base it indexes)`);
   const mainRoot = dirname(common);
-  const cfg = join(mainRoot, '.loom', 'config.json');
-  if (!existsSync(cfg)) {
-    mkdirSync(dirname(cfg), { recursive: true });
-    writeFileSync(cfg, JSON.stringify({ run: `coord:local:${basename(mainRoot)}`, dirs: pyDirs(mainRoot), daemon: DAEMON }, null, 2) + '\n');
-  }
-  exclude(mainRoot, ['.loom/', '.claude/settings.local.json', '.mcp.json']);
-  const sp = join(top, '.claude', 'settings.local.json');
-  mergeHooks(sp, o.hookCmd);
-  if (o.mcpPath) {   // the loom MCP tools, merged next to whatever servers the repo already has
-    const mp = join(top, '.mcp.json');
-    const m = existsSync(mp) ? JSON.parse(readFileSync(mp, 'utf8')) : {};
-    (m.mcpServers ??= {}).loom = { command: 'node', args: [o.mcpPath] };
-    writeFileSync(mp, JSON.stringify(m, null, 2) + '\n');
-  }
-  return { mainRoot, config: cfg, settings: sp };
+  const id = repoId(mainRoot);                                                    // throws on a repo with no commits
+  const cfgPath = join(mainRoot, '.loom', 'config.json');
+  const hadLock = existsSync(join(mainRoot, '.loom', 'regions.lock'));
+  const dirs = pyDirs(mainRoot);
+  const fresh = { repoId: id, dirs: dirs.length ? dirs : ['.'], excludes: DEFAULT_EXCLUDES, testCmd: o.testCmd ?? detectTestCmd(mainRoot), share: true,
+    run: `coord:local:${basename(mainRoot)}`, daemon: DAEMON };                   // v1 run-mode keys stay until P3
+  const v1 = readConfig(mainRoot) as (LoomConfig & Record<string, unknown>) | null;
+  if (v1 && !v1.repoId) writeFileSync(cfgPath, JSON.stringify({ ...fresh, ...v1, repoId: id }, null, 2) + '\n');   // upgrade a v1 config in place
+  const cfg = ensureLoomDir(mainRoot, fresh as LoomConfig);
+  exclude(mainRoot, ['.claude/settings.local.json', '.mcp.json']);              // .loom/ is not excluded: its records travel through git
+  const db = o.db ?? await LoomDb.connect();
+  try {
+    const g = db.graph(o.tenant ? graphName(o.tenant, cfg.repoId) : (await resolveRepo(db, mainRoot))!.graph.name);
+    const s = await indexRepo(g, mainRoot, { baseline: !hadLock });
+    installGitHooks(mainRoot, o.loomCmd);
+    const sp = join(top, '.claude', 'settings.local.json');
+    mergeHooks(sp, o.hookCmd);
+    if (o.mcpPath) {   // the loom MCP tools, merged next to whatever servers the repo already has
+      const mp = join(top, '.mcp.json');
+      const m = existsSync(mp) ? JSON.parse(readFileSync(mp, 'utf8')) : {};
+      (m.mcpServers ??= {}).loom = { command: 'node', args: [o.mcpPath] };
+      writeFileSync(mp, JSON.stringify(m, null, 2) + '\n');
+    }
+    await importSessions(g, mainRoot, null);
+    if (hadLock) await reconcile(g, mainRoot, null, 'HEAD', 200);                // a clone of a Loom repo: catch up on what landed without us
+    const [{ n: sessions }] = await g.query<{ n: number }>('MATCH (s:Session) RETURN count(s) AS n');
+    const [{ n: people }] = await g.query<{ n: number }>('MATCH (p:Person) RETURN count(p) AS n');
+    const summary = `files: ${s.files} · regions: ${s.regions} · degraded: ${s.degraded.length} · unresolved calls: ${s.unresolved} · sessions: ${sessions} · people: ${people} · reparsed: ${s.reparsed}`;
+    return { mainRoot, config: cfgPath, settings: sp, summary };
+  } finally { if (!o.db) await db.close(); }
 }
 
 async function healthy(): Promise<boolean> {
@@ -105,15 +134,39 @@ function table(title: string, head: string[], rows: string[][]) {
   for (const r of [head, ...rows]) console.log('  ' + r.map((c, i) => c.padEnd(w[i])).join('  '));
 }
 
+/** Runs f on this repo's graph (resolved the same way the daemon does). */
+async function withRepo(f: (g: LoomGraph, top: string) => Promise<number>): Promise<number> {
+  let db: LoomDb;
+  try { db = await LoomDb.connect(); } catch (e) { return failed(e); }
+  try {
+    const repo = await resolveRepo(db, process.cwd());
+    if (!repo) { console.error('not a loom v2 repo (run loom init)'); return 1; }
+    return await f(repo.graph, repo.top);
+  } finally { await db.close(); }
+}
+
+/** `loom hook git <name>`: never blocks git. FalkorDB gets 1.5 s; without it pre-commit still versions into the session file
+ * (the next import picks it up) and the other hooks skip. Errors go to stderr; the hook always exits 0. */
+async function gitHook(name: string | undefined): Promise<number> {
+  const cwd = process.cwd(); const top = gitTry(cwd, 'rev-parse', '--show-toplevel') ?? cwd;
+  const db = await Promise.race([LoomDb.connect(), new Promise<null>((r) => setTimeout(() => r(null), 1500))]).catch(() => null);
+  try {
+    if (!db && name !== 'pre-commit') { console.error(`[loom] ${name}: FalkorDB unreachable; continuing`); return 0; }
+    const repo = db ? await resolveRepo(db, cwd) : null;
+    if (name === 'pre-commit') await preCommit(top, repo?.graph ?? null);
+    else if (!repo) return 0;
+    else if (name === 'post-commit') await postCommit(repo.top, repo.graph);
+    else if (name === 'post-merge' || name === 'post-checkout' || name === 'post-rewrite')
+      await sync(repo.graph, repo.top, { me: gitTry(repo.top, 'config', 'user.email') ?? 'unknown', fetch: false, quiet: true });
+  } catch (e) { console.error(`[loom] ${name}: ${(e as Error).message}; continuing`); }
+  finally { await db?.close().catch(() => {}); }
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
+  if (cmd === 'regions') return regionsCmd(rest);
   if (cmd === 'init') {
-    let r: ReturnType<typeof initRepo>;
-    try {
-      r = initRepo(process.cwd(), { hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`,
-        mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs') });
-    } catch (e) { console.error(`loom init: ${(e as Error).message}`); return 1; }
-    console.log(`wrote ${r.config}\nhooks in ${r.settings}`);
     if (!(await pingDb())) {
       console.log('FalkorDB not reachable; starting it with docker compose');
       execFileSync('docker', ['compose', '-f', join(loomRoot(), 'docker-compose.yml'), 'up', '-d', 'falkordb'], { stdio: 'inherit' });
@@ -121,8 +174,30 @@ export async function main(argv: string[]): Promise<number> {
       for (let i = 0; i < 30 && !(ok = await pingDb()); i++) await sleep(1000);
       if (!ok) { console.error('FalkorDB did not come up in 30s'); return 1; }
     }
-    console.log('next: `loom up`, then run `claude` in this directory (or any of its worktrees)');
+    let r: Awaited<ReturnType<typeof initRepo>>;
+    try {
+      r = await initRepo(process.cwd(), { hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`,
+        mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs'), loomCmd: `node ${join(loomRoot(), 'packages', 'cli', 'dist', 'loom.cjs')}` });
+    } catch (e) { console.error(`loom init: ${(e as Error).message}`); return 1; }
+    console.log(`wrote ${r.config}\nhooks in ${r.settings}\n${r.summary}`);
+    console.log('next: commit .loom/ (it carries the regions lock and session records to teammates), then run `claude` in this directory (or any of its worktrees); `loom up` for the v1 run mode');
     return 0;
+  }
+  if (cmd === 'hook' && rest[0] === 'git') return gitHook(rest[1]);
+  if (cmd === 'sync' || cmd === 'brief' || cmd === 'finish') {
+    const json = rest.includes('--json');
+    return withRepo(async (g, top) => {
+      if (cmd === 'sync') {
+        const r = await sync(g, top, { me: gitTry(top, 'config', 'user.email') ?? 'unknown', fetch: !rest.includes('--no-fetch'), quiet: json || rest.includes('--quiet') });
+        if (json) console.log(JSON.stringify(r)); return 0;   // otherwise sync printed the briefing itself (unless --quiet)
+      }
+      if (cmd === 'brief') {
+        const [m] = await g.query<{ text: string; at: number }>(`MATCH (m:Message {kind: 'briefing'}) RETURN m.text AS text, m.at AS at ORDER BY m.at DESC LIMIT 1`);
+        console.log(json ? JSON.stringify(m ?? null) : m?.text ?? 'no briefing yet: run `loom sync`'); return 0;
+      }
+      const r = await finishSession(g, top, { commit: rest.includes('--commit') });
+      console.log(json ? JSON.stringify(r ?? null) : 'session finished'); return 0;
+    });
   }
   if (cmd === 'up') {
     if (await healthy()) { console.log('already running'); return 0; }
@@ -174,6 +249,21 @@ export async function main(argv: string[]): Promise<number> {
   }
   if (cmd === 'lesson') {
     const [sub, ...args] = rest;
+    // v2: a repo with a repoId keeps lessons on its region graph; --symbol/--run (or a v1 config) keep the v1 daemon path
+    const v2 = !args.includes('--symbol') && !args.includes('--run') && readConfig(dirname(gitTry(process.cwd(), 'rev-parse', '--path-format=absolute', '--git-common-dir') ?? '.'))?.repoId;
+    if (v2 && (sub === 'add' || sub === 'list' || !sub)) return withRepo(async (g, top) => {
+      const pos = args.filter((x) => !x.startsWith('--'));
+      if (sub === 'add') {
+        if (pos.length < 2) { console.error('usage: loom lesson add <region> "<text>"'); return 1; }
+        const l = await addLesson(g, top, readActive(top), pos[0], pos.slice(1).join(' '), 'manual');
+        console.log(args.includes('--json') ? JSON.stringify(l) : `added to ${pos[0]}`); return 0;
+      }
+      const ls = pos[0] ? await lessonsFor(g, [pos[0]], 50)
+        : await g.query<{ id: string; text: string; region: string }>('MATCH (l:Lesson)-[:ON]->(r:Region) RETURN l.id AS id, l.text AS text, r.id AS region ORDER BY l.at');
+      if (args.includes('--json')) console.log(JSON.stringify(ls));
+      else table('lessons', ['region', 'text'], (ls as any[]).map((l) => [String(l.region ?? pos[0] ?? ''), String(l.text)]));
+      return 0;
+    });
     const pos = args.filter((x, i) => !x.startsWith('--') && !['--symbol', '--run'].includes(args[i - 1]));
     const j = (r: Response) => r.json() as Promise<any>;
     try {
@@ -186,12 +276,12 @@ export async function main(argv: string[]): Promise<number> {
       }
       if (sub === 'rm') {
         if (!pos[0]) { console.error('usage: loom lesson rm <id>'); return 1; }
-        const r = await j(await fetch(`${DAEMON}/lessons?id=${encodeURIComponent(pos[0])}`, { method: 'DELETE' }));
+        const r = await j(await fetch(`${DAEMON}/lessons?id=${encodeURIComponent(pos[0])}&run=${encodeURIComponent(flag(args, '--run') ?? resolveAttach(process.cwd())?.run ?? '')}`, { method: 'DELETE' }));
         console.log(r.removed ? 'removed' : 'no such lesson'); return r.removed ? 0 : 1;
       }
       if (sub === 'list' || !sub) {
         const sym = flag(args, '--symbol');
-        const { lessons } = await j(await fetch(`${DAEMON}/lessons${sym ? `?symbol=${encodeURIComponent(sym)}` : ''}`));
+        const { lessons } = await j(await fetch(`${DAEMON}/lessons?run=${encodeURIComponent(flag(args, '--run') ?? resolveAttach(process.cwd())?.run ?? '')}${sym ? `&symbol=${encodeURIComponent(sym)}` : ''}`));
         table('lessons', ['id', 'hits', 'text'], lessons.map((l: any) => [l.id, String(l.hits), l.text])); return 0;
       }
     } catch (e) { return failed(e); }

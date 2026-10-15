@@ -9,6 +9,7 @@
   "dependencies": {
     "@loom/core": "workspace:*",
     "@loom/indexer": "workspace:*",
+    "@loom/memory": "workspace:*",
     "@loom/planner": "workspace:*"
   }
 }

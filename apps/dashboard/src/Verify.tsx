@@ -9,7 +9,7 @@ export function Verify({ run }: { run: string }) {
   const [cs, setCs] = useState<Claim[] | null>(null);
   const [err, setErr] = useState('');
   const [ls, setLs] = useState<{ id: string; text: string; hits: number; symbols: string[] }[]>([]);
-  useEffect(() => { getJson<{ lessons: any[] }>(`/lessons`).then((x) => setLs(x.lessons)).catch(() => {}); }, [run]);
+  useEffect(() => { getJson<{ lessons: any[] }>(`/lessons?run=${encodeURIComponent(run)}`).then((x) => setLs(x.lessons)).catch(() => {}); }, [run]);
   useEffect(() => {
     let alive = true;
     const load = () => getJson<{ claims: Claim[] }>(`/claims?run=${encodeURIComponent(run)}`).then((x) => alive && setCs(x.claims)).catch((e) => setErr(String(e)));
@@ -33,7 +33,7 @@ export function Verify({ run }: { run: string }) {
             </tbody>
           </table>
         </section>))}
-      <h3>Lessons (all runs)</h3>
+      <h3>Lessons (this run)</h3>
       {ls.length ? <ul>{ls.map((l) => <li key={l.id}>{l.text} <span className="dim">· {l.id} · hits {l.hits}</span></li>)}</ul> : <p className="dim">none</p>}
     </div>
   );

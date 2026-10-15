@@ -14,7 +14,6 @@ const F = 'django/utils/text.py';
 const SID = `${F}::phone2numeric`;
 const TEXT = 'def phone2numeric(phone):\n    return phone.upper()\n';
 const run = `test:mcp:${Date.now()}`;
-const lessonsGraph = `test:lessons:${Date.now()}`;
 let db: LoomDb; let srv: Awaited<ReturnType<typeof startServer>>; let url: string;
 
 function tree(): string {
@@ -40,11 +39,11 @@ const call = async (c: Client, name: string, args: Record<string, unknown> = {})
 
 beforeAll(async () => {
   db = await LoomDb.connect();
-  srv = await startServer({ port: 0, db, uiPort: null, lessonsGraph, recordDir: mkdtempSync(join(tmpdir(), 'loom-rec-')) });
+  srv = await startServer({ port: 0, db, uiPort: null, recordDir: mkdtempSync(join(tmpdir(), 'loom-rec-')) });
   url = `http://127.0.0.1:${srv.port}`;
   await fetch(`${url}/admin/runs`, { method: 'POST', body: JSON.stringify({ run, root: tree(), dirs: ['django'], baseKey: run }) });
 });
-afterAll(async () => { await srv.close(); await db.graph(run).drop(); await db.graph(`trace:${run}`).drop().catch(() => {}); await db.graph(lessonsGraph).drop().catch(() => {}); await db.close(); });
+afterAll(async () => { await srv.close(); await db.graph(run).drop(); await db.graph(`trace:${run}`).drop().catch(() => {}); await db.close(); });
 
 test('3.1 twelve tools; decision, contract lease grant/deny, who_is_touching', async () => {
   const A = await client('A'); const C = await client('C');

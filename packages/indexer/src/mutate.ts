@@ -7,7 +7,9 @@ type Node = Parser.SyntaxNode;
 export type MutantOp = 'cmp' | 'not' | 'ret' | 'const' | 'arg';
 export interface Mutant { op: MutantOp; start: number; end: number; text: string }
 
-const require = createRequire(import.meta.url);
+declare const __filename: string;
+// import.meta.url is undefined inside the CLI's CJS bundle
+const require = createRequire(import.meta.url ?? __filename);
 let parserP: Promise<Parser> | null = null;
 const parser = () => (parserP ??= (async () => {
   await Parser.init();

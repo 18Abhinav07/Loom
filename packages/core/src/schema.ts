@@ -19,3 +19,13 @@ export async function ensureSchema(g: LoomGraph): Promise<void> {
     try { await g.query(q); } catch (e) { if (!/already indexed/i.test(String(e))) throw e; }
   }
 }
+
+/** Repo graph (`loom:<tenant>:<repoId>`, §4.1). The Symbol list above stays until P3's migration. */
+const REPO_INDEXES = ['Region', 'Version', 'Session', 'Agent', 'Person', 'Task', 'Decision', 'Evidence', 'Lesson', 'Message', 'Thread', 'Handoff', 'Imported']
+  .map((l) => `CREATE INDEX FOR (n:${l}) ON (n.id)`)
+  .concat(['CREATE INDEX FOR (n:Region) ON (n.path)', 'CREATE INDEX FOR (n:Commit) ON (n.sha)', 'CREATE INDEX FOR (n:Watermark) ON (n.person)']);
+export async function ensureRepoSchema(g: LoomGraph): Promise<void> {
+  for (const q of REPO_INDEXES) {
+    try { await g.query(q); } catch (e) { if (!/already indexed/i.test(String(e))) throw e; }
+  }
+}

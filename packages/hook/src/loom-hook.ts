@@ -10,7 +10,8 @@ async function main() {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-loom-agent': process.env.LOOM_AGENT ?? '', 'x-loom-run': process.env.LOOM_RUN ?? '' },
       body: input || '{}',
-      signal: AbortSignal.timeout(Number(process.env.LOOM_HOOK_TIMEOUT_MS ?? 5000)),
+      // SessionStart builds the briefing (sync + fetch): 10 s. Every other hook sits in the agent's tool loop: 2 s.
+      signal: AbortSignal.timeout(Number(event === 'SessionStart' ? (process.env.LOOM_HOOK_TIMEOUT_MS_START ?? 10000) : (process.env.LOOM_HOOK_TIMEOUT_MS ?? 2000))),
     });
     const out = await res.text();
     if (res.ok && out) process.stdout.write(out);
