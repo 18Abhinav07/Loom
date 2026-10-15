@@ -10,7 +10,7 @@ import type { PlanTask } from '@loom/planner';
 import { exclude, mergeHooks, pyDirs } from './loom.js';
 import { MAX_RESUMES, spawnClaude, SUFFIX, type RunOpts, type RunReport, type WorkerReport } from './run.js';
 
-type Status = 'landed' | 'empty' | 'conflict' | 'tests_failed';
+type Status = 'landed' | 'empty' | 'conflict' | 'tests_failed' | 'contract_break';
 interface Worker { t: PlanTask; wt: string; branch: string; rep: WorkerReport; running: boolean; status: Status | null; tail: string }
 
 /** Computed at call time: run.ts and this module import each other through loom.ts. */
@@ -85,7 +85,9 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
     const h = await handover(w.wt, landed);
     const why = r.status === 'tests_failed'
       ? `[loom] your work did not land: the tests failed after merging it with the landed work. Fix it so the tests pass. Output:\n${r.tail}`
-      : `[loom] your work did not land: it conflicts with work another agent landed.`;
+      : r.status === 'contract_break'
+        ? `[loom] your work did not land: merged with the landed work, some ${r.tail}\nThe landed work is in your checkout now. Fix every listed call site (or the signature) so they fit, then finish.`
+        : `[loom] your work did not land: it conflicts with work another agent landed.`;
     const files = h.status === 'conflict' ? `\nThe landed work is merged into your checkout; resolve the conflict markers in ${h.files.join(', ')}, keeping both changes' intent.` : '';
     w.rep.resumed++;
     launch(w, why + files, w.rep.sessionId);
@@ -131,7 +133,7 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
   // The run's result is the landed branch; work that never landed is reported, not merged in.
   const mwt = join(repo, '.loom', 'wt', run8, '_merge');
   git(repo, 'worktree', 'add', '-q', '--detach', mwt, landed);
-  const lost = [...workers.values()].filter((w) => w.status === 'conflict' || w.status === 'tests_failed');
+  const lost = [...workers.values()].filter((w) => w.status === 'conflict' || w.status === 'tests_failed' || w.status === 'contract_break');
   const conflict = lost.length ? lost.map((w) => `${w.branch}: not landed (${w.status})`).join('; ') : null;
   let testsPassed: boolean | null = null; let testOutputTail = '';
   if (testCmd) {

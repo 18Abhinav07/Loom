@@ -88,3 +88,17 @@ test('work that fails the landing tests does not land; the agent is resumed with
   expect(merged(r, rep)).toContain('return x * 1');
   expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
 });
+
+test('t1 shape: b adds a caller of f while a makes f\'s keyword required; the tests miss it; a lands last, gets contract_break and fixes the caller', async () => {
+  const r = repo();
+  const fix = { edit: [M, '    return f(y)\n', '    return f(y, strict=False)\n'] };
+  const rep = await go(r, { test: `python3 -c "import pkg.m"`, tasks: [
+    task('a', 'f', { edits: [[M, 'def f(x):', 'def f(x, *, strict):'], [M, 'return f(1)', 'return f(1, strict=False)']], hold: 1500, resumes: [fix] }),
+    task('b', 'h', { edit: [M, 'def h(y):', 'def u(y):\n    return f(y)\n\n\ndef h(y):'] })] });
+  const args = readFileSync(join(log, 'a.args'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  expect(args.at(-1).join(' ')).toMatch(/pkg\/m\.py:\d+ u calls f/);
+  expect(worker(rep, 'a')).toMatchObject({ exit: 0, resumed: 1 });
+  expect(worker(rep, 'b')).toMatchObject({ exit: 0, resumed: 0 });
+  expect(merged(r, rep)).toContain('return f(y, strict=False)');
+  expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
+});
