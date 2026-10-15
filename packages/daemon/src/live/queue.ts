@@ -12,7 +12,7 @@ const ID = ['-c', 'user.email=loom@local', '-c', 'user.name=loom'];
 const git = (cwd: string, ...a: string[]) => spawnSync('git', [...ID, ...a], { cwd, encoding: 'utf8', maxBuffer: 1 << 28 });
 const show = (cwd: string, ref: string, f: string) => { const r = git(cwd, 'show', `${ref}:${f}`); return r.status === 0 ? r.stdout : null; };
 /** Never landed: the run's own bookkeeping and the agent's local settings. */
-export const KEEP_OUT = [':!.loom', ':!.claude', ':!.mcp.json', ':!CLAUDE.md'];
+export const KEEP_OUT = [':!.loom', ':!.claude', ':!.mcp.json', ':!.loom-mcp.json', ':!CLAUDE.md'];
 const tail = (s: string) => s.split('\n').slice(-40).join('\n');
 
 /** Regions whose text differs between `from` and `to` (updated, created, removed, renamed-from), per changed file. */

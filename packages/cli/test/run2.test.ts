@@ -59,6 +59,8 @@ test('three tasks on different functions: each lands on the landed branch; _merg
   for (const w of rep.workers) expect(execFileSync('git', ['merge-base', '--is-ancestor', w.commit!, rep.merge.branch], { cwd: r }).length).toBe(0);
   expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
   expect(merged(r, rep)).toMatch(/x \+ 0[\s\S]*f\(2\)[\s\S]*y \* 1/);
+  expect(git(r, 'ls-tree', '-r', '--name-only', rep.merge.branch).split('\n')).toEqual([M]);   // the run's own files never land
+  expect(rep.workers.map((w) => w.resumed)).toEqual([0, 0, 0]);
   expect(exitCode(rep)).toBe(0);
 });
 
