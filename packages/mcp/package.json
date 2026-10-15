@@ -1,0 +1,9 @@
+{
+  "name": "@loom/mcp",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/loom-mcp.ts",
+  "scripts": { "build": "esbuild src/loom-mcp.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/loom-mcp.cjs" },
+  "dependencies": { "@modelcontextprotocol/sdk": "1.32.1", "zod": "3.25.76" },
+  "devDependencies": { "@loom/core": "workspace:*", "@loom/daemon": "workspace:*" }
+}
