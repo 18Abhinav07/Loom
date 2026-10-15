@@ -1,0 +1,37 @@
+{
+  "conds": {
+    "blind": {
+      "n": 12,
+      "solo_pass": 12,
+      "merged_pass": 0,
+      "interference": 12,
+      "interference_rate": 1.0,
+      "mean_b_seconds": 19.6,
+      "cost_usd": 0.6979,
+      "delta_vs_blind": 0.0
+    },
+    "oracle": {
+      "n": 12,
+      "solo_pass": 4,
+      "merged_pass": 12,
+      "interference": 0,
+      "interference_rate": 0.0,
+      "mean_b_seconds": 16.8,
+      "cost_usd": 0.6014,
+      "delta_vs_blind": -1.0
+    },
+    "live": {
+      "n": 12,
+      "solo_pass": 3,
+      "merged_pass": 12,
+      "interference": 0,
+      "interference_rate": 0.0,
+      "mean_b_seconds": 29.7,
+      "cost_usd": 0.8677,
+      "delta_vs_blind": -1.0
+    }
+  },
+  "excluded": 0,
+  "instances": 12,
+  "records": "runs/e1/20261014-164045"
+}

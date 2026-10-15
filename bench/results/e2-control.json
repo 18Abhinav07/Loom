@@ -1,0 +1,12 @@
+{
+  "attempts": 10000,
+  "granted": 10000,
+  "denied": 0,
+  "double_grants": 2332,
+  "graph_violations": 526,
+  "throughput_per_s": 2269,
+  "p50_ms": 9.43,
+  "p99_ms": 17.36,
+  "read_p50_ms": 0.34,
+  "read_p99_ms": 0.74
+}

@@ -1,0 +1,10 @@
+p1_slugify   blind all_pass=False broken=1 conflict=None a:ok b:FAIL 42.0s
+p1_slugify   loom  all_pass=True  broken=0 conflict=None a:ok b:ok 82.0s
+p2_phone     blind all_pass=False broken=1 conflict=None a:ok b:FAIL 35.1s
+p2_phone     loom  all_pass=True  broken=0 conflict=None a:ok b:ok 75.5s
+t1_slugpath  blind all_pass=False broken=0 conflict=None a:ok b:FAIL c:FAIL 40.6s
+t1_slugpath  loom  all_pass=True  broken=0 conflict=None a:ok b:ok c:ok 93.5s
+cond   n  all_pass  agents_ok  broken  conflicts  wall_s
+blind  3  0/3  3/7  2  0  118
+loom   3  3/3  7/7  0  0  251
+records: /Users/18abhinav07/Documents/loom/bench/runs/e5/pilot-1/records.jsonl
