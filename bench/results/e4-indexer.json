@@ -1,0 +1,25 @@
+{
+  "n": 100,
+  "file": "django/utils/text.py",
+  "graph_symbols": 10702,
+  "base_index_s": 1.8,
+  "onEdit": {
+    "n": 100,
+    "p50": 5.6,
+    "p95": 6.7,
+    "max": 7.8
+  },
+  "body": {
+    "n": 50,
+    "p50": 5.6,
+    "p95": 7.1,
+    "max": 7.8
+  },
+  "signature": {
+    "n": 50,
+    "p50": 5.6,
+    "p95": 6.6,
+    "max": 7.1
+  },
+  "pass": true
+}
