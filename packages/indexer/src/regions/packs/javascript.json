@@ -1,0 +1,12 @@
+{
+  "name": "javascript", "version": 1, "extensions": [".js", ".mjs", ".cjs", ".jsx"], "grammar": "tree-sitter-javascript.wasm",
+  "comment": "// ", "importReader": "ecmascript",
+  "wrappers": { "export_statement": "declaration" },
+  "definitions": ["function_declaration", "generator_function_declaration", "class_declaration"],
+  "assignments": ["lexical_declaration", "variable_declaration"],
+  "containers": { "class_declaration": "body" },
+  "members": ["method_definition"],
+  "imports": ["import_statement"],
+  "calls": "(call_expression function: (_) @callee) @call (new_expression constructor: (_) @callee) @call",
+  "params": ["parameters"]
+}

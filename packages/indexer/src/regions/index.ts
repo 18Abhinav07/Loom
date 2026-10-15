@@ -1,0 +1,12 @@
+export * from './types.js';
+export { sha1, decodeUtf8 } from './text.js';
+export { checkInvariants } from './invariants.js';
+export { assemble } from './assemble.js';
+export { PACKS, packFor, parse, language, hasError, type Pack } from './pack.js';
+export { regionize, wholeFile } from './regionize.js';
+export { COMMENT_SYNTAX, markerBlocks, wholeFileReason } from './tiers.js';
+export { shiftMap } from './shift.js';
+export { diffRegions, type RegionDiff } from './lifecycle.js';
+export { buildEdges, moduleKeys, TEST_PATH, type Edge } from './edges.js';
+export { gitMergeFile, regionMerge, type MergeResult } from './merge.js';
+export * from './lock.js';

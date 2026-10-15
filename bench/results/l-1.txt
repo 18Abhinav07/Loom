@@ -1,0 +1,24 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.8 /Users/18abhinav07/Documents/loom-v2
+
+stdout | packages/indexer/test/regions/corpus.test.ts > L−1 Django corpus > 882 files: every invariant, 0 degraded, deterministic
+[L-1] regions=24688
+
+stdout | packages/indexer/test/regions/corpus.test.ts > L−1 Django corpus > locality: an integer edit inside one definition changes only its hash; no id changes; later offsets shift by delta
+[L-1] locality edits=2078 failures=0
+
+stdout | packages/indexer/test/regions/corpus.test.ts > L−1 Django corpus > shifted map under seeded syntax breaks: degraded, same ids, exact cover, only the broken region touched
+[L-1] shift broken=287 notBroken=13 failures=0
+
+stdout | packages/indexer/test/regions/corpus.test.ts > this repo: every tracked TS/TSX/JS/JSON/MD file satisfies the invariants
+[L-1] repo files=99 degraded=0
+
+ ✓ packages/indexer/test/regions/corpus.test.ts (4 tests) 7734ms
+   ✓ L−1 Django corpus > locality: an integer edit inside one definition changes only its hash; no id changes; later offsets shift by delta 6495ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  14:10:00
+   Duration  8.04s (transform 50ms, setup 85ms, collect 59ms, tests 7.73s, environment 0ms, prepare 29ms)
+

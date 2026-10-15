@@ -1,0 +1,12 @@
+{
+  "name": "python", "version": 1, "extensions": [".py", ".pyi"], "grammar": "tree-sitter-python.wasm",
+  "comment": "# ", "importReader": "python",
+  "wrappers": { "decorated_definition": "definition" },
+  "definitions": ["function_definition", "class_definition"],
+  "assignments": ["expression_statement"],
+  "containers": { "class_definition": "body" },
+  "members": ["function_definition", "class_definition", "decorated_definition"],
+  "imports": ["import_statement", "import_from_statement", "future_import_statement"],
+  "calls": "(call function: (_) @callee) @call",
+  "params": ["parameters", "superclasses"]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "typescript", "version": 1, "extensions": [".ts", ".mts", ".cts"], "grammar": "tree-sitter-typescript.wasm",
+  "comment": "// ", "importReader": "ecmascript",
+  "wrappers": { "export_statement": "declaration" },
+  "definitions": ["function_declaration", "generator_function_declaration", "class_declaration", "abstract_class_declaration",
+                  "interface_declaration", "type_alias_declaration", "enum_declaration"],
+  "assignments": ["lexical_declaration", "variable_declaration"],
+  "containers": { "class_declaration": "body", "abstract_class_declaration": "body" },
+  "members": ["method_definition", "abstract_method_signature"],
+  "imports": ["import_statement"],
+  "calls": "(call_expression function: (_) @callee) @call (new_expression constructor: (_) @callee) @call",
+  "params": ["parameters"]
+}
