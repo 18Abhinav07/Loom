@@ -59,7 +59,7 @@ export class Live {
   unseen(agent: string) { return this.serial(() => this.unseenU(agent)); }
   takeNotices(agent: string) { return this.serial(() => this.takeU(agent)); }
   ack(agent: string, noticeId: string) { return this.serial(() => this.ackU(agent, noticeId)); }
-  land(agent: string, regions: string[]) { return this.serial(() => this.landU(agent, regions)); }
+  land(agent: string, regions: string[], v?: { sha: string; task: string | null }) { return this.serial(() => this.landU(agent, regions, v)); }
   sweep() { return this.serial(() => this.sweepU()); }
   release(agent: string) { return this.serial(() => this.releaseU(agent)); }
   syncIfPending(agent: string) { return this.serial(async () => { const a = await this.agent(agent); return a ? this.syncU(a) : null; }); }
@@ -289,8 +289,18 @@ export class Live {
     return [...new Set(ws.map((w) => w.b))];
   }
 
-  private async landU(agent: string, regions: string[]): Promise<string[]> {
+  private async landU(agent: string, regions: string[], v?: { sha: string; task: string | null }): Promise<string[]> {
     await this.agent(agent);
+    // R6.4: a landing is a Version of each region, by this agent, for its task; the stale check reads these
+    if (v) for (const region of regions) {
+      await this.g.query(`MERGE (r:Region {id: $region}) WITH r OPTIONAL MATCH (p:Version)-[:OF]->(r)
+        WITH r, p ORDER BY p.at DESC LIMIT 1
+        CREATE (n:Version {id: $id, region: $region, commits: [$sha], at: $now, external: false})-[:OF]->(r)
+        MERGE (a:Agent {id: $agent}) CREATE (n)-[:BY]->(a)
+        FOREACH (_ IN CASE WHEN p IS NULL THEN [] ELSE [1] END | CREATE (n)-[:PREV]->(p))
+        FOREACH (t IN CASE WHEN $task IS NULL THEN [] ELSE [$task] END | MERGE (k:Task {id: t}) CREATE (n)-[:FOR]->(k))`,
+      { region, id: `run:${v.sha}:${region}`, sha: v.sha, now: this.now(), agent, task: v.task });
+    }
     await release(this.g, agent, regions);
     const woken = await this.wake(agent, regions, 'landed');
     const held = await this.g.query<{ id: string }>(`MATCH (o:Agent)-[l:LEASED]->(r:Region) WHERE r.id IN $regions AND o.id <> $agent AND l.expires > $now

@@ -19,6 +19,7 @@ import { llmPlan, partition, scope, validatePlan, type PlanTask } from '@loom/pl
 import { renderWhy, why } from './why.js';
 import { filePatch, replay, type ReplayProgress } from './replay.js';
 import { resolveRepo } from './repo.js';
+import { LiveRoutes } from './live/routes.js';
 import { finishSession, gitTry, lessonsFor, startSession } from '@loom/memory';
 
 const PY_PATH = /[\w./-]+\.py\b/g;
@@ -57,6 +58,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     const t = setInterval(() => void c.sweep().catch(() => {}), 30_000); t.unref(); timers.push(t);
   };
   const bus = new EventBus();
+  const live = new LiveRoutes(opts.db);
   const recorder = new Recorder(opts.recordDir ?? join(homedir(), '.loom', 'runs'));
   const record = (run: string, route: string, b: unknown) => {
     try { recorder.record(run, route, b); } catch (e) { console.error(`[loom] record failed: ${String(e)}`); }
@@ -185,6 +187,8 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
           if ((parts[2] === 'SessionStart' || parts[2] === 'SessionEnd') && !req.headers['x-loom-run']) {   // P2: an interactive session in a loom repo
             const repo = await resolveRepo(opts.db, input.cwd ?? '', req.headers['x-loom-home'] as string | undefined);
             if (repo) {
+              const t = await live.target(req.headers, input.cwd, input.session_id);
+              if (t) await live.hook(parts[2], t, input);   // registers on start, releases leases on end
               if (parts[2] === 'SessionStart') {
                 const person = gitTry(repo.top, 'config', 'user.email') ?? 'unknown';
                 const { briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive' });
@@ -194,6 +198,8 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
               return send(200, {});
             }
           }
+          const t = await live.target(req.headers, input.cwd, input.session_id);
+          if (t) return send(200, await live.hook(parts[2], t, input));
           const r = await runFor(String(req.headers['x-loom-run'] ?? ''), input.cwd);
           const agent = String(req.headers['x-loom-agent'] ?? '') || (input.session_id ? `claude-${input.session_id.slice(0, 8)}` : '');
           if (r) {   // edits also carry their diff, so a replay can redo Bash edits that left no edit strings
@@ -211,6 +217,11 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         // tool errors travel as {ok:false} with 200, so the MCP session survives daemon-side failures
         try {
           const b = await body(req);
+          const t = await live.target({ ...req.headers, ...(b.run ? { 'x-loom-run': b.run } : {}), ...(b.agent ? { 'x-loom-agent': b.agent } : {}) }, b.cwd, undefined);
+          if (t) {
+            const m = await live.mcp(parts[1], t, b.args ?? {});
+            if (m.handled) return send(200, { ok: true, result: m.result });
+          }
           const r = await runFor(String(req.headers['x-loom-run'] ?? b.run ?? ''), b.cwd);
           if (!r) return send(200, { ok: false, error: 'run not loaded' });
           // attach mode: the MCP process has no session id, so it is the agent last heard from in this worktree
@@ -295,6 +306,14 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         const c = runs.get(b.run);
         return c ? send(200, { released: await c.forceRelease(b.agent) }) : send(404, { error: 'run not loaded' });
       }
+      if (req.method === 'POST' && parts[0] === 'admin' && parts[1] === 'v2') {   // R6.1–R6.4: the v2 `loom run`
+        const b = await body(req);
+        const r = parts[2] === 'runs' ? await live.addRun(b)
+          : parts[2] === 'agents' ? await live.addAgent(b)
+          : parts[2] === 'land' ? await live.land(String(b.run), String(b.agent))
+          : parts[2] === 'take' ? await live.take(String(b.run), String(b.agent)) : undefined;
+        return r === undefined ? send(404, { error: 'not found' }) : r === null ? send(404, { error: 'run or agent not loaded' }) : send(200, r);
+      }
       if (req.method === 'POST' && u.pathname === '/admin/runs') {
         const b = await body(req);
         record(b.run, u.pathname, b);
@@ -338,7 +357,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       }
       if (req.method === 'GET' && parts[0] === 'runs' && parts[2] === 'notices') {
         const c = runs.get(parts[1]);
-        return send(200, c ? await c.allNotices() : []);
+        return send(200, c ? await c.allNotices() : (await live.notices(parts[1])) ?? []);
       }
       send(404, { error: 'not found' });
     } catch (e) {
@@ -409,7 +428,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   return {
     port, uiPort: ui?.port, bus, runs,
     close: async () => {
-      timers.forEach(clearInterval);
+      timers.forEach(clearInterval); live.close();
       for (const t of traces.values()) await t.close();
       await ui?.close(); await new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }); },
   };

@@ -16,12 +16,14 @@ export function listFiles(root: string, cfg: LoomConfig): string[] {
 /** §6.1 step 3: blobs that match the lock are loaded from it; only mismatches are reparsed. Edges are rebuilt from all maps. */
 /** `writeLock: false` (sync, git hooks): the lock is tracked, so only init and pre-commit write it. Rewriting it from a
  * hook dirties the worktree mid-rebase and git aborts the next pick (L0 gate step 6). Misses are reparsed, not stored. */
-export async function indexRepo(g: LoomGraph, root: string, opts: { baseline?: boolean; writeLock?: boolean } = {}) {
-  const cfg = readConfig(root)!;
+/** `cfg` (a v2 run on a repo with no repoId): index with this config instead of the repo's, only under `cfg.dirs`. */
+export async function indexRepo(g: LoomGraph, root: string, opts: { baseline?: boolean; writeLock?: boolean; cfg?: LoomConfig } = {}) {
+  const cfg = opts.cfg ?? readConfig(root)!;
   await ensureRepoSchema(g);
   const lockPath = join(root, '.loom', 'regions.lock');
   const lock = existsSync(lockPath) ? parseLock(readFileSync(lockPath, 'utf8')) : new Map<string, LockEntry[]>();
-  const files = listFiles(root, cfg);
+  const under = opts.cfg && !opts.cfg.dirs.includes('.') ? opts.cfg.dirs.map((d) => d.replace(/\/$/, '') + '/') : null;
+  const files = listFiles(root, cfg).filter((f) => !under || under.some((d) => f.startsWith(d)));
   const frs: FileRegions[] = []; const changed: FileRegions[] = []; const entries: LockEntry[] = [];
   const renames: Array<{ from: string; to: string }> = [];
   for (const f of files) {
