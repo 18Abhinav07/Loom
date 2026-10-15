@@ -1,0 +1,10 @@
+{
+  "delivered": 15,
+  "precise": 12,
+  "precision": 0.8,
+  "agent_hours": 0.099,
+  "notices_per_agent_hour": 151.39,
+  "n_live": 12,
+  "no_twin": 0,
+  "records": "runs/e1/20261014-164045"
+}

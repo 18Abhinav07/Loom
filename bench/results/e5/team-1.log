@@ -1,0 +1,10 @@
+s1_slug4     blind all_pass=False broken=2 conflict=loom/mv8yr4tp/b: django/utils/text.py a:ok b:FAIL c:FAIL d:FAIL 33.8s
+s1_slug4     loom  all_pass=False broken=1 conflict=loom/mv8ys0c7/c: django/utils/text.py a:ok b:ok c:FAIL d:ok 98.6s
+s2_trunc4    blind all_pass=False broken=1 conflict=loom/mv8yu9ln/c: django/utils/text.py a:ok b:ok c:FAIL d:FAIL 40.3s
+s2_trunc4    loom  all_pass=False broken=2 conflict=loom/mv8yv9uc/b: tests/utils_tests/test_text.py a:FAIL b:FAIL c:FAIL d:FAIL 84.3s
+s3_filename4 blind all_pass=False broken=2 conflict=loom/mv8yx865/b: django/utils/text.py a:ok b:FAIL c:FAIL d:FAIL 29.0s
+s3_filename4 loom  all_pass=False broken=2 conflict=loom/mv8yxzxn/b: django/utils/text.py a:ok b:FAIL c:FAIL d:FAIL 76.2s
+cond   n  all_pass  agents_ok  broken  conflicts  wall_s  cost_usd  turns  integration
+blind  3  0/3  4/12  5  3  103  1.25  71  0/0
+loom   3  0/3  4/12  5  3  259  2.84  168  0/0
+records: /Users/18abhinav07/Documents/loom/bench/runs/e5/team-1/records.jsonl
