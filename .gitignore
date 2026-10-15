@@ -1,7 +1,7 @@
 node_modules/
 dist/
 bench/.venv/
-bench/cache/
+bench/cache
 bench/runs/
 third_party/
 .loom/
