@@ -1,0 +1,12 @@
+{
+ "commit": "afe6634146d0fe70498976c49d2eb4d745aa9064",
+ "dirs": [
+  "django"
+ ],
+ "root": "/Users/18abhinav07/Documents/loom-demo",
+ "source": "loom-mv7y0ybo",
+ "bashPatches": [
+  "a",
+  "c"
+ ]
+}

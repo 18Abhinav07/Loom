@@ -1,0 +1,16 @@
+services:
+  falkordb:
+    image: falkordb/falkordb:latest
+    ports: ["${FALKORDB_PORT:-6379}:6379", "${FALKORDB_UI_PORT:-3000}:3000"]
+    volumes: ["falkordb-data:/data"]
+    restart: unless-stopped
+  # `docker compose up` = FalkorDB + daemon + dashboard; then `docker compose exec daemon node packages/cli/dist/loom.cjs replay demo/run-1` and open http://127.0.0.1:4317
+  daemon:
+    build: .
+    depends_on: [falkordb]
+    ports: ["127.0.0.1:${LOOM_PORT:-4318}:4318", "127.0.0.1:${LOOM_UI_PORT:-4317}:4317"]
+    environment:
+      FALKORDB_URL: redis://falkordb:6379
+    restart: unless-stopped
+volumes:
+  falkordb-data:

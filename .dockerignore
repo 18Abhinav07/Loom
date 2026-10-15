@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+.git
+.loom
+bench/.venv
+bench/cache
+bench/runs
+**/__pycache__
+third_party
