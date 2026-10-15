@@ -35,6 +35,33 @@ export function exitCode(r: RunReport): number {
   return r.workers.every((w) => w.exit === 0) && !r.merge.conflict && r.merge.testsPassed !== false ? 0 : 1;
 }
 
+export interface SpawnOpts { id: string; wt: string; prompt: string; resume?: string; rep: WorkerReport; runDir: string;
+  model?: string; claudeBin?: string; env: NodeJS.ProcessEnv; blind?: boolean }
+/** One headless claude in its worktree; stream-json goes to <runDir>/<id>.jsonl and the first session id onto the report. */
+export function spawnClaude(s: SpawnOpts): Promise<number> {
+  return new Promise<number>((done) => {
+    const args = ['-p', s.prompt, ...(s.resume ? ['--resume', s.resume] : []), '--model', s.model ?? 'sonnet', '--output-format', 'stream-json',
+      '--verbose', '--setting-sources', 'project,local', ...(s.blind ? [] : ['--mcp-config', join(s.wt, '.loom-mcp.json')]),
+      '--permission-mode', 'acceptEdits', '--allowedTools', ...(s.blind ? TOOLS.filter((t) => !t.startsWith('mcp__')) : TOOLS)];
+    const bin = s.claudeBin?.includes('/') ? resolve(s.claudeBin) : s.claudeBin ?? 'claude';   // workers run in their worktree
+    const p = spawn(bin, args, { cwd: s.wt, stdio: ['ignore', 'pipe', 'pipe'], env: s.env });
+    const out = createWriteStream(join(s.runDir, `${s.id}.jsonl`), { flags: 'a' });
+    const err = createWriteStream(join(s.runDir, `${s.id}.err`), { flags: 'a' });
+    let buf = '';
+    p.stdout.on('data', (d: Buffer) => {
+      out.write(d);
+      if (s.rep.sessionId) return;
+      buf += d.toString();
+      for (const line of buf.split('\n').slice(0, -1)) {
+        try { const j = JSON.parse(line); if (j.type === 'system' && j.subtype === 'init' && j.session_id) { s.rep.sessionId = j.session_id; break; } } catch { /* partial or non-JSON line */ }
+      }
+    });
+    p.stderr.pipe(err);
+    p.on('error', (e) => { err.write(`spawn failed: ${String(e)}\n`); });
+    p.on('close', (code) => { out.end(); err.end(); done(code ?? 1); });
+  });
+}
+
 interface Worker { t: PlanTask; wt: string; branch: string; rep: WorkerReport; running: boolean }
 
 export async function runPlan(o: RunOpts): Promise<RunReport> {
@@ -80,28 +107,8 @@ export async function runPlan(o: RunOpts): Promise<RunReport> {
   const env: NodeJS.ProcessEnv = { ...process.env };
   delete env.ANTHROPIC_API_KEY; delete env.ANTHROPIC_AUTH_TOKEN;   // the subscription login, never a paid key
 
-  const claude = (w: Worker, prompt: string, resume?: string) => new Promise<number>((done) => {
-    const args = ['-p', prompt, ...(resume ? ['--resume', resume] : []), '--model', o.model ?? 'sonnet', '--output-format', 'stream-json',
-      '--verbose', '--setting-sources', 'project,local', ...(o.blind ? [] : ['--mcp-config', join(w.wt, '.loom-mcp.json')]),
-      '--permission-mode', 'acceptEdits', '--allowedTools', ...(o.blind ? TOOLS.filter((t) => !t.startsWith('mcp__')) : TOOLS)];
-    const bin = o.claudeBin?.includes('/') ? resolve(o.claudeBin) : o.claudeBin ?? 'claude';   // workers run in their worktree
-    const p = spawn(bin, args, { cwd: w.wt, stdio: ['ignore', 'pipe', 'pipe'],
-      env: o.blind ? env : { ...env, LOOM_RUN: run, LOOM_AGENT: w.t.id, LOOM_URL: url } });
-    const out = createWriteStream(join(runDir, `${w.t.id}.jsonl`), { flags: 'a' });
-    const err = createWriteStream(join(runDir, `${w.t.id}.err`), { flags: 'a' });
-    let buf = '';
-    p.stdout.on('data', (d: Buffer) => {
-      out.write(d);
-      if (w.rep.sessionId) return;
-      buf += d.toString();
-      for (const line of buf.split('\n').slice(0, -1)) {
-        try { const j = JSON.parse(line); if (j.type === 'system' && j.subtype === 'init' && j.session_id) { w.rep.sessionId = j.session_id; break; } } catch { /* partial or non-JSON line */ }
-      }
-    });
-    p.stderr.pipe(err);
-    p.on('error', (e) => { err.write(`spawn failed: ${String(e)}\n`); });
-    p.on('close', (code) => { out.end(); err.end(); done(code ?? 1); });
-  });
+  const claude = (w: Worker, prompt: string, resume?: string) => spawnClaude({ id: w.t.id, wt: w.wt, prompt, resume, rep: w.rep, runDir,
+    model: o.model, claudeBin: o.claudeBin, env: o.blind ? env : { ...env, LOOM_RUN: run, LOOM_AGENT: w.t.id, LOOM_URL: url }, blind: o.blind });
 
   /** Spec §5.1: the worker is gone — commit what it left, land it, release its leases (non-zero marks the task failed). */
   const finish = async (w: Worker, code: number) => {

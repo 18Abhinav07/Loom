@@ -7,6 +7,7 @@ import { LoomDb, type LoomGraph } from '@loom/core';
 import { loadPlan } from '@loom/planner';
 import { regionsCmd } from './regions.js';
 import { exitCode, runPlan } from './run.js';
+import { runPlan2 } from './run2.js';
 import { resolveAttach, resolveRepo } from '@loom/daemon';
 import { addLesson, DEFAULT_EXCLUDES, ensureLoomDir, finishSession, gitTry, graphName, importSessions, indexRepo, installGitHooks, lessonsFor,
   postCommit, preCommit, readActive, readConfig, reconcile, repoId, sync, type LoomConfig } from '@loom/memory';
@@ -353,11 +354,12 @@ export async function main(argv: string[]): Promise<number> {
   }
   if (cmd === 'run') {
     const file = flag(rest, '--plan');
-    if (!file) { console.error('usage: loom run --plan <file> [--model sonnet] [--claude <bin>] [--max N] [--blind] [--report out.json]'); return 1; }
+    if (!file) { console.error('usage: loom run --plan <file> [--model sonnet] [--claude <bin>] [--max N] [--blind | --v1] [--report out.json]'); return 1; }
     const blind = rest.includes('--blind');   // the no-Loom baseline (bench E5)
     if (!blind && !(await healthy())) { console.error('daemon not running (run loom up)'); return 1; }
     const plan = loadPlan(file);
-    const rep = await runPlan({ repo: plan.repo ? resolve(dirname(file), plan.repo.replace(/^~(?=\/|$)/, homedir())) : git(process.cwd(), 'rev-parse', '--show-toplevel'), plan,
+    // R6.3: v2 (land-as-you-go through the daemon's merge queue) is the default; the blind baseline and --v1 keep the merge-at-end flow
+    const rep = await (blind || rest.includes('--v1') ? runPlan : runPlan2)({ repo: plan.repo ? resolve(dirname(file), plan.repo.replace(/^~(?=\/|$)/, homedir())) : git(process.cwd(), 'rev-parse', '--show-toplevel'), plan,
       model: flag(rest, '--model'), claudeBin: flag(rest, '--claude'), maxParallel: flag(rest, '--max') ? Number(flag(rest, '--max')) : undefined,
       url: DAEMON, blind, hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`,
       mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs') });

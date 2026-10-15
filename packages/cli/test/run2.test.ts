@@ -1,0 +1,88 @@
+// P3 Task 7: v2 `loom run` — agents land one at a time onto the run's landed branch through the daemon's merge queue;
+// a stopped agent is resumed on a wake, or with the reason its work could not land.
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { afterAll, beforeAll, expect, test } from 'vitest';
+import { LoomDb } from '@loom/core';
+import { startServer } from '../../daemon/src/server.js';
+import { exitCode, type RunReport } from '../src/run.js';
+import { runPlan2 } from '../src/run2.js';
+import type { Plan } from '@loom/planner';
+
+const ROOT = resolve(__dirname, '..', '..', '..');
+const FAKE = join(__dirname, 'fake-claude.mjs');
+const M = 'pkg/m.py';
+const SRC = 'def f(x):\n    return x\n\n\ndef g():\n    return f(1)\n\n\ndef h(y):\n    return y\n';
+let db: LoomDb; let srv: Awaited<ReturnType<typeof startServer>>; let url: string;
+const runs: string[] = [];
+const log = mkdtempSync(join(tmpdir(), 'loom-fake2-'));
+process.env.FAKE_LOG = log;
+
+beforeAll(async () => {
+  db = await LoomDb.connect();
+  srv = await startServer({ port: 0, db, uiPort: null, recordDir: mkdtempSync(join(tmpdir(), 'loom-rec-')) });
+  url = `http://127.0.0.1:${srv.port}`;
+});
+afterAll(async () => {
+  await srv.close();
+  for (const r of runs) await db.graph(r).drop().catch(() => {});
+  await db.close();
+});
+
+function repo(): string {
+  const d = mkdtempSync(join(tmpdir(), 'loom-run2-'));
+  mkdirSync(join(d, dirname(M)), { recursive: true }); writeFileSync(join(d, M), SRC);
+  const g = (...a: string[]) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd: d });
+  g('init', '-q'); g('add', '-A'); g('commit', '-qm', 'base');
+  return d;
+}
+const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
+const task = (id: string, scope: string, fake: Record<string, unknown>) =>
+  ({ id, title: `task ${id}`, prompt: `do ${id}\nFAKE: ${JSON.stringify(fake)}`, scope: [`${M}::${scope}`] });
+async function go(r: string, plan: Plan): Promise<RunReport> {
+  const run = `t2-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`; runs.push(run);
+  return runPlan2({ repo: r, plan, run, url, claudeBin: FAKE,
+    hookCmd: `node ${join(ROOT, 'packages/hook/dist/loom-hook.cjs')}`, mcpPath: join(ROOT, 'packages/mcp/dist/loom-mcp.cjs'), pollMs: 200 });
+}
+const worker = (rep: RunReport, a: string) => rep.workers.find((w) => w.agent === a)!;
+const merged = (r: string, rep: RunReport) => readFileSync(join(r, '.loom/wt', rep.run.replace(/[^\w-]/g, '').slice(-8), '_merge', M), 'utf8');
+
+test('three tasks on different functions: each lands on the landed branch; _merge is the landed branch; tests pass', async () => {
+  const r = repo();
+  const rep = await go(r, { test: `python3 -c "import pkg.m"`, tasks: [
+    task('a', 'f', { edit: [M, '    return x\n', '    return x + 0\n'] }),
+    task('b', 'g', { edit: [M, '    return f(1)\n', '    return f(2)\n'] }),
+    task('c', 'h', { edit: [M, '    return y\n', '    return y * 1\n'] })] });
+  expect(rep.workers.map((w) => [w.agent, w.exit, Boolean(w.commit)])).toEqual([['a', 0, true], ['b', 0, true], ['c', 0, true]]);
+  for (const w of rep.workers) expect(execFileSync('git', ['merge-base', '--is-ancestor', w.commit!, rep.merge.branch], { cwd: r }).length).toBe(0);
+  expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
+  expect(merged(r, rep)).toMatch(/x \+ 0[\s\S]*f\(2\)[\s\S]*y \* 1/);
+  expect(exitCode(rep)).toBe(0);
+});
+
+test('same function: the second is denied, woken when the first lands, resumed on the landed code, and lands its retry', async () => {
+  const r = repo();
+  const retry = { edit: [M, '    return x + 1\n', '    return (x + 1) * 2\n'] };
+  const rep = await go(r, { tasks: [
+    task('a', 'f', { edit: [M, '    return x\n', '    return x + 1\n'], hold: 1500 }),
+    task('b', 'f', { sleep: 500, edit: [M, '    return x\n', '    return x * 2\n'], resumes: [retry] })] });
+  const out = readFileSync(join(r, '.loom/runs', rep.run.replace(/[^\w.-]+/g, '_'), 'b.jsonl'), 'utf8');
+  expect(out).toContain('leased by agent a');
+  expect(worker(rep, 'b')).toMatchObject({ exit: 0, resumed: 1 });
+  expect(merged(r, rep)).toContain('return (x + 1) * 2');
+  expect(rep.merge.conflict).toBeNull();
+});
+
+test('work that fails the landing tests does not land; the agent is resumed with the test output and lands its fix', async () => {
+  const r = repo();
+  const fix = { edit: [M, '    return x + 1\n', '    return x * 1\n'] };
+  const rep = await go(r, { test: `python3 -c "import pkg.m as m; assert m.f(1) == 1, 'f-broke-' + str(m.f(1))"`, tasks: [
+    task('a', 'f', { edit: [M, '    return x\n', '    return x + 1\n'], resumes: [fix] })] });
+  const args = readFileSync(join(log, 'a.args'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  expect(args.at(-1).join(' ')).toContain('f-broke-2');
+  expect(worker(rep, 'a')).toMatchObject({ exit: 0, resumed: 1 });
+  expect(merged(r, rep)).toContain('return x * 1');
+  expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
+});
