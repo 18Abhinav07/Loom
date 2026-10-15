@@ -1,0 +1,7 @@
+{
+  "name": "@loom/indexer",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": { "@loom/core": "workspace:*", "web-tree-sitter": "0.22.6", "tree-sitter-wasms": "0.1.13" }
+}
