@@ -33,8 +33,21 @@ export function renderChange(c: ChangeView, unleased: boolean): string {
   if (c.kind === 'removed') out.push(`  removed: ${c.before ?? c.qname}`);
   else out.push(`  before: ${c.before ?? '(new)'}`, `  after:  ${c.after ?? '(unparsed)'}`);
   if (c.holder) out.push(`  current lease holder: agent ${c.holder}`);
-  out.push('  Both changes will be merged: make your code work with the AFTER version.');
+  out.push(c.kind === 'body' ? '  Both changes will be merged: make your code work with the AFTER version.' : SECOND);
   return out.join('\n');
+}
+
+// The AFTER signature does not exist in the reader's checkout yet; calling it there would break the reader's own landing.
+const SECOND = '  Keep your code valid against your checkout. Whichever of you lands second is handed every call that no longer fits, and fixes it.';
+
+export function renderContractUse(c: { author: string; qname: string; path: string; before: string | null; after: string | null }): string {
+  return [`[loom] you now call ${c.qname} (${c.path}), whose signature agent ${c.author} is changing (in progress, not in your checkout yet)`,
+    `  before: ${c.before ?? c.qname}`, `  after:  ${c.after ?? '(unparsed)'}`, SECOND].join('\n');
+}
+
+export function renderNewCaller(author: string, qname: string, callers: string[]): string {
+  return [`[loom] agent ${author} added calls to ${qname}, whose signature you are changing: ${callers.join(', ')} (in their checkout, not in yours yet)`,
+    '  If you land after them, Loom hands you each of these calls that does not fit your signature; if they land after you, they fix them.'].join('\n');
 }
 
 export function renderConflict(regions: string[]): string {

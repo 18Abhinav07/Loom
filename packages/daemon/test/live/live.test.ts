@@ -203,3 +203,57 @@ test('handover on a pending sync: syncIfPending merges the landed branch into th
   expect(readFileSync(join(wt, 'y', 'a.py'), 'utf8')).toContain('return 7');
   expect(await live.syncIfPending('q')).toBeNull();
 });
+
+// Live coordination A–C: calls written while agents work are graph edges at once, so a signature change and a new call
+// to it find each other in whichever order they happen; the function an agent creates is its own leased region.
+const U = 'a.py::u::definition#0';
+async function ownWorktree(id: string): Promise<string> {
+  const d = join(mkdtempSync(join(tmpdir(), 'loom-live-wt-')), id);
+  sh(root, 'worktree', 'add', '-q', '-b', `agent-${id}`, d);
+  await live.register(agent(id, 'P9', { worktree: d }));
+  return d;
+}
+async function edit(id: string, wt: string, old: string, nu: string) {
+  expect((await live.preEdit(id, { file: 'a.py', edits: [{ old, new: nu }] })).allow).toBe(true);
+  writeFileSync(join(wt, 'a.py'), readFileSync(join(wt, 'a.py'), 'utf8').replace(old, nu));
+  return live.postEdit(id, 'a.py');
+}
+const addCaller = (wt: string) => edit('q', wt, 'def k():', 'def u(v):\n    return f(v)\n\n\ndef k():');
+const strictF = () => edit('x', root, 'def f(x):', 'def f(x, *, strict):');
+
+test('contract first: q writes a new call to f while x holds f under a signature change → q is told the pending signature, x is told of the new caller; q leases u', async () => {
+  await strictF();
+  const wt = await ownWorktree('q');
+  await addCaller(wt);
+  const nq = await live.takeNotices('q');
+  expect(nq.map((m) => m.kind)).toEqual(['contract_use']);
+  expect(nq[0].text).toContain('agent x');
+  expect(nq[0].text).toContain('f(x, *, strict)');
+  expect(nq[0].text).toContain('lands second');
+  const nx = await live.takeNotices('x');
+  expect(nx.map((m) => m.kind)).toEqual(['new_caller']);
+  expect(nx[0].text).toMatch(/agent q[\s\S]* u\b/);
+  expect(await leases('q')).toEqual([{ id: U }]);
+});
+
+test('caller first: q has written u calling f, then x changes f\'s signature → q (through its lease on u) gets the change, x gets the new caller', async () => {
+  const wt = await ownWorktree('q');
+  await addCaller(wt);
+  expect(await live.takeNotices('q')).toEqual([]);
+  await strictF();
+  const nq = await live.takeNotices('q');
+  expect(nq.map((m) => m.kind)).toEqual(['change']);
+  expect(nq[0].text).toContain('f(x, *, strict)');
+  expect(nq[0].text).toContain('lands second');
+  expect(nq[0].text).not.toContain('AFTER version');
+  const nx = await live.takeNotices('x');
+  expect(nx.map((m) => m.kind)).toEqual(['new_caller']);
+  expect(nx[0].text).toMatch(/agent q[\s\S]* u\b/);
+});
+
+test('no false alarm: a body-only change of f tells x nothing about q\'s new caller', async () => {
+  const wt = await ownWorktree('q');
+  await addCaller(wt);
+  await edit('x', root, '    return x\n', '    return x + 1\n');
+  expect(await live.takeNotices('x')).toEqual([]);
+});

@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run && vitest run -c vitest.perf.config.ts",
     "build:hook": "pnpm --filter @loom/hook build",
     "build:mcp": "pnpm --filter @loom/mcp build",
     "daemon": "pnpm --filter @loom/daemon start",

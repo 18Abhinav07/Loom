@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LoomGraph } from '@loom/core';
-import { diffRegions, regionize } from '@loom/indexer';
+import { buildEdges, diffRegions, regionize, type Edge, type FileRegions, type Region } from '@loom/indexer';
 import { lessonsFor, ulid } from '@loom/memory';
 import { acquire, expired, holders, release, renew } from '../lease.js';
 import { MAX_PER_DELIVERY, score, THRESHOLD } from '../notice.js';
@@ -32,6 +32,7 @@ export class Live {
   private readonly denials = new Map<string, number[]>();   // agent|region → denial times inside the window
   private readonly blocked = new Set<string>();             // agent|region past RC5: bare deny until woken
   private readonly views = new Map<string, string | null>(); // agent|file → the text the agent last reported
+  private readonly parsed = new Map<string, FileRegions>();   // agent|file → that text, regionized: the next diff's before side
   private readonly seen = new Map<string, Map<string, string>>(); // agent → file → blob it last saw
   private seq = 0;
 
@@ -172,8 +173,10 @@ export class Live {
     const after = this.fileText(a.worktree, file);
     this.views.set(key, after);
     if (before === null || before === after) return { changed: [], notices: 0 };
-    const B = await regionize(file, before);
+    const hit = this.parsed.get(key);
+    const B = hit?.text === before ? hit : await regionize(file, before);
     const A = await regionize(file, after ?? '', { lastClean: B.degraded ? undefined : B });
+    this.parsed.set(key, A);
     const sigB = new Map(B.regions.map((r) => [r.id, r.sig]));
     const sigA = new Map(A.regions.map((r) => [r.id, r.sig]));
     const changes = new Map<string, Kind>();
@@ -184,7 +187,7 @@ export class Live {
       for (const id of [...d.tombstoned, ...d.renamed.map((r) => r.from)]) changes.set(id, 'removed');
     }
     const now = this.now();
-    let notices = 0;
+    let notices = A.degraded ? 0 : await this.liveEdges(a, A, now);
     for (const [region, k] of changes) {
       const cid = ulid(now);
       await this.g.query(`CREATE (:Change {id: $cid, agent: $agent, region: $region, kind: $k, beforeSig: $b, afterSig: $after, at: $now, seq: $seq})`,
@@ -192,6 +195,78 @@ export class Live {
       notices += await this.notify(a.id, region, k, cid, kind);
     }
     return { changed: [...changes.keys()].sort(), notices };
+  }
+
+  /**
+   * A–C: the calls and imports in the agent's current text are its own overlay edges ({by: agent}, replacing its previous ones from
+   * this file), the functions it created are regions it leases, and a new call to a function another agent is re-signing tells both.
+   */
+  private async liveEdges(a: Row, A: FileRegions, now: number): Promise<number> {
+    const defs = A.regions.filter((r) => r.kind === 'definition' || r.kind === 'container');
+    const have = new Set((await this.g.query<{ id: string }>('MATCH (r:Region) WHERE r.id IN $ids RETURN r.id AS id', { ids: defs.map((r) => r.id) })).map((r) => r.id));
+    const made = defs.filter((r) => !have.has(r.id));
+    if (made.length) {
+      await this.g.query(`UNWIND $rs AS r CREATE (:Region {id: r.id, path: $path, kind: r.kind, qname: r.qname, sig: r.sig, start: r.start, end: r.end,
+        hash: r.hash, degraded: false, tombstoned: false, stub: false, live: $by})`,
+      { rs: made.map(({ id, kind, qname, sig, start, end, hash }) => ({ id, kind, qname, sig, start, end, hash })), path: A.path, by: a.id });
+      await acquire(this.g, a.id, made.map((r) => r.id), 'write', a.task ?? '', now);
+    }
+
+    // import targets come in as stubs (their definitions only); a name unique within this subset proves nothing, so no unique_name
+    const stubs: FileRegions[] = [];
+    if (/\.pyi?$/.test(A.path)) {
+      const mods = new Set<string>();
+      for (const b of A.imports ?? []) {
+        const parts = [b.module, b.name].filter(Boolean).join('.').split('.');
+        for (let i = 1; i <= parts.length; i++) mods.add(parts.slice(0, i).join('.'));
+      }
+      const paths = [...mods].flatMap((m) => [`${m.replaceAll('.', '/')}.py`, `${m.replaceAll('.', '/')}/__init__.py`]).filter((p) => p !== A.path);
+      const rows = paths.length ? await this.g.query<{ path: string; id: string; kind: Region['kind']; qname: string }>(`MATCH (r:Region)
+        WHERE r.path IN $paths AND r.kind IN ['definition', 'container'] AND NOT coalesce(r.tombstoned, false)
+        RETURN r.path AS path, r.id AS id, r.kind AS kind, r.qname AS qname`, { paths }) : [];
+      const by = new Map<string, Region[]>();
+      for (const r of rows) (by.get(r.path) ?? by.set(r.path, []).get(r.path)!).push({ ...r, start: 0, end: 0, hash: '', masked: '', sig: null });
+      for (const [path, regions] of by) stubs.push({ path, pack: 'stub', degraded: false, text: '', regions, warnings: [] });
+    }
+    const key = (e: { kind: string; from: string; to: string }) => `${e.kind}|${e.from}|${e.to}`;
+    const want = buildEdges([A, ...stubs]).edges.filter((e) => e.kind !== 'CONTAINS' && e.via !== 'unique_name' && e.from.startsWith(`${A.path}::`));
+    const cur = await this.g.query<{ kind: string; from: string; to: string; by: string | null }>(`MATCH (s:Region {path: $path})-[e:CALLS|IMPORTS|TESTS]->(t:Region)
+      WHERE e.by IS NULL OR e.by = $by RETURN type(e) AS kind, s.id AS from, t.id AS to, e.by AS by`, { path: A.path, by: a.id });
+    const base = new Set(cur.filter((e) => e.by === null).map(key));
+    const old = new Set(cur.filter((e) => e.by !== null).map(key));
+    const nu = want.filter((e) => !base.has(key(e)));
+    await this.g.query(`MATCH (s:Region {path: $path})-[e:CALLS|IMPORTS|TESTS {by: $by}]->() DELETE e`, { path: A.path, by: a.id });
+    for (const kind of ['CALLS', 'IMPORTS', 'TESTS'] as const) {
+      const es = nu.filter((e) => e.kind === kind).map((e) => ({ a: e.from, b: e.to, via: e.via }));
+      if (es.length) await this.g.query(`UNWIND $es AS e MATCH (a:Region {id: e.a}), (b:Region {id: e.b}) CREATE (a)-[:${kind} {via: e.via, by: $by}]->(b)`, { es, by: a.id });
+    }
+
+    // contract first: the callee is already being re-signed by someone else
+    const fresh = nu.filter((e: Edge) => e.kind === 'CALLS' && !old.has(key(e)));
+    if (!fresh.length) return 0;
+    const busy = await this.g.query<{ holder: string; region: string }>(`MATCH (o:Agent)-[l:LEASED]->(r:Region) WHERE r.id IN $ts AND o.id <> $me
+      AND l.expires > $now AND l.contract = true RETURN o.id AS holder, r.id AS region`, { ts: [...new Set(fresh.map((e) => e.to))], me: a.id, now });
+    let n = 0;
+    for (const b of busy) {
+      await this.g.query(`MERGE (n:Notice {agent: $me, author: $holder, region: $region, kind: 'contract_use', status: 'pending'})
+        ON CREATE SET n.id = $id, n.at = $now, n.score = 0.9`, { me: a.id, holder: b.holder, region: b.region, id: ulid(now), now });
+      n += 1 + await this.newCaller(b.holder, a.id, b.region, fresh.filter((e) => e.to === b.region).map((e) => e.from), now);
+    }
+    return n;
+  }
+
+  /** Tells the agent re-signing `region` which callers `author` has written against it; each caller is reported once. */
+  private async newCaller(rec: string, author: string, region: string, callers: string[], now: number): Promise<number> {
+    const told = new Set((await this.g.query<{ regions: string | null }>(`MATCH (n:Notice {agent: $rec, author: $author, region: $region, kind: 'new_caller'})
+      RETURN n.regions AS regions`, { rec, author, region })).flatMap((r) => JSON.parse(r.regions ?? '[]') as string[]));
+    const add = [...new Set(callers)].filter((c) => !told.has(c));
+    if (!add.length) return 0;
+    const [p] = await this.g.query<{ regions: string | null }>(`MERGE (n:Notice {agent: $rec, author: $author, region: $region, kind: 'new_caller', status: 'pending'})
+      ON CREATE SET n.id = $id, n.at = $now, n.score = 0.9 RETURN n.regions AS regions`, { rec, author, region, id: ulid(now), now });
+    const all = [...new Set([...(JSON.parse(p?.regions ?? '[]') as string[]), ...add])].sort();
+    await this.g.query(`MATCH (n:Notice {agent: $rec, author: $author, region: $region, kind: 'new_caller', status: 'pending'}) SET n.regions = $rs`,
+      { rec, author, region, rs: JSON.stringify(all) });
+    return 1;
   }
 
   /** Dependents only: a change to R reaches the regions that call, import or test R (within 3 hops), plus R itself. */
@@ -210,6 +285,12 @@ export class Live {
     for (const l of leased) offer(l.agent, 'LEASED', hops.get(l.region)!);
     for (const s of scoped) for (const r of s.scope) if (hops.has(r)) offer(s.agent, 'SCOPE', hops.get(r)!);
     let n = 0;
+    if (k !== 'body') {
+      // caller first: calls other agents wrote against the old signature are news to the one changing it
+      const cs = await this.g.query<{ by: string; id: string }>(`MATCH (t:Region)-[e:CALLS]->(:Region {id: $region}) WHERE e.by IS NOT NULL AND e.by <> $author
+        RETURN DISTINCT e.by AS by, t.id AS id`, { region, author });
+      for (const by of new Set(cs.map((c) => c.by))) n += await this.newCaller(author, by, region, cs.filter((c) => c.by === by).map((c) => c.id), now);
+    }
     for (const [rec, s] of best) {
       if (s < THRESHOLD) continue;
       // one pending notice per (recipient, author, region): its text is rendered from the latest Change when it is read (RC3)
@@ -253,6 +334,11 @@ export class Live {
 
   private async render(n: { kind: string; author: string; region: string | null; why: string | null; regions: string | null }): Promise<string> {
     if (n.kind === 'conflict') return R.renderConflict(JSON.parse(n.regions ?? '[]'));
+    if (n.kind === 'new_caller') {
+      const callers = JSON.parse(n.regions ?? '[]') as string[];
+      const cm = await this.regions([n.region!, ...callers]);
+      return R.renderNewCaller(n.author, this.qn(cm, n.region!), callers.map((c) => this.qn(cm, c)));
+    }
     const meta = await this.regions([n.region!]);
     const m = meta.get(n.region!);
     const qname = this.qn(meta, n.region!);
@@ -262,6 +348,7 @@ export class Live {
       const { renderWake } = await import('../notice.js');
       return renderWake(n.author, qname, c?.after ?? m?.sig ?? qname, n.why === 'lapsed' ? 'lapsed' : 'landed');
     }
+    if (n.kind === 'contract_use') return R.renderContractUse({ author: n.author, qname, path: m?.path ?? n.region!.split('::')[0], before: m?.sig ?? null, after: c?.after ?? null });
     const [h] = await this.g.query<{ id: string }>(`MATCH (o:Agent)-[l:LEASED]->(:Region {id: $region}) WHERE l.expires > $now RETURN o.id AS id LIMIT 1`,
       { region: n.region, now: this.now() });
     return R.renderChange({ author: n.author, qname, path: m?.path ?? n.region!.split('::')[0], kind: c?.kind ?? 'body',
