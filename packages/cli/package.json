@@ -1,0 +1,17 @@
+{
+  "name": "@loom/cli",
+  "version": "0.0.1",
+  "type": "module",
+  "bin": {
+    "loom": "dist/loom.cjs"
+  },
+  "scripts": {
+    "build": "esbuild src/loom.ts --bundle --platform=node --target=node22 --format=cjs --external:falkordb --outfile=dist/loom.cjs"
+  },
+  "dependencies": {
+    "@loom/core": "workspace:*",
+    "@loom/daemon": "workspace:*",
+    "falkordb": "6.8.0",
+    "@loom/planner": "workspace:*"
+  }
+}
