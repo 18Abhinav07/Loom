@@ -1,0 +1,11 @@
+node_modules/
+dist/
+bench/.venv/
+bench/cache/
+bench/runs/
+third_party/
+.loom/
+*.egg-info/
+__pycache__/
+*.pyc
+.DS_Store

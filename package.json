@@ -1,0 +1,20 @@
+{
+  "name": "loom",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "test": "vitest run",
+    "build:hook": "pnpm --filter @loom/hook build",
+    "build:mcp": "pnpm --filter @loom/mcp build",
+    "daemon": "pnpm --filter @loom/daemon start",
+    "build:cli": "pnpm --filter @loom/cli build",
+    "build:ui": "pnpm --filter dashboard build"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "vitest": "2.1.8",
+    "tsx": "4.19.2",
+    "esbuild": "0.24.0",
+    "@types/node": "22.10.1"
+  }
+}
