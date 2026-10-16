@@ -2,7 +2,9 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { dirname, join } from 'node:path';
 import { git } from './git.js';
 
-export interface LoomConfig { repoId: string; dirs: string[]; excludes: string[]; testCmd: string | null; share: boolean }
+export interface LoomConfig { repoId: string; dirs: string[]; excludes: string[]; testCmd: string | null; share: boolean;
+  /** v2 (B1): the tracked-file count per language, and the repo's type-check command. */
+  v?: 2; langs?: Record<string, number>; compile?: string | null }
 export const DEFAULT_EXCLUDES = ['node_modules', '.venv', 'dist', 'build', '.git'];
 const ATTRS = 'sessions/*.jsonl merge=union\nregions.lock merge=union\n';
 

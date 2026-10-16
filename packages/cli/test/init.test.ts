@@ -47,3 +47,15 @@ test('loom init refuses a worktree of a bare repository (no main checkout to ind
   const wt = `${src}-wt`; g(bare, 'worktree', 'add', '-q', '--detach', wt, 'HEAD');
   await expect(initRepo(wt, { hookCmd: 'x', loomCmd: 'l', db })).rejects.toThrow(/bare repository/);
 });
+
+test('config v2: languages, compiler and source dirs across languages; an older config is upgraded keeping its keys', async () => {
+  const repo = gitRepo({ 'src/a.ts': 'export function f() {}\n', 'tsconfig.json': '{}', 'lib/b.py': 'x = 1\n', 'docs/r.md': '' });
+  await initRepo(repo, { hookCmd: 'h', loomCmd: 'l', db });
+  const cfg = JSON.parse(readFileSync(join(repo, '.loom/config.json'), 'utf8'));
+  expect(cfg).toMatchObject({ v: 2, dirs: ['lib', 'src'], compile: 'npx tsc --noEmit -p .', langs: { ts: 1, python: 1, md: 1, json: 1 } });
+  const old = { ...cfg, dirs: ['lib'], testCmd: 'make t', mine: 1 }; delete old.v; delete old.langs; delete old.compile;
+  writeFileSync(join(repo, '.loom/config.json'), JSON.stringify(old));
+  await initRepo(repo, { hookCmd: 'h', loomCmd: 'l', db });
+  expect(JSON.parse(readFileSync(join(repo, '.loom/config.json'), 'utf8'))).toMatchObject({ v: 2, dirs: ['lib'], testCmd: 'make t', mine: 1, compile: 'npx tsc --noEmit -p .' });
+  await db.graph(graphName(tenant(), repoId(repo))).drop();
+});
