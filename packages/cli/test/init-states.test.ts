@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { LoomDb } from '@loom/core';
-import { graphName, repoId, tenant } from '@loom/memory';
-import { initRepo } from '../src/loom.js';
+import { finishSession, graphName, importSessions, repoId, startSession, tenant } from '@loom/memory';
+import { initRepo, printSummary } from '../src/loom.js';
 
 let db: LoomDb;
 const made: string[] = [];
@@ -44,7 +44,41 @@ test('state B: commit:true commits .loom', async () => {
 test('state B: commit:false leaves .loom untracked', async () => {
   const d = dir({ 'a.py': 'x = 1\n' }, true);
   const r = await init(d, false);
-  expect(r).toMatchObject({ state: 'B', committed: false });
+  expect(r).toMatchObject({ state: 'B', committed: false, pending: true });
+  expect(printSummary(r)).toMatch(/\.loom\/ not committed/);
   expect(git(d, 'ls-files', '.loom')).toBe('');
   expect(git(d, 'rev-list', '--count', 'HEAD')).toBe('1');
+});
+
+test('second init changes nothing', async () => {
+  const d = dir({ 'a.py': 'x = 1\n' }, true);
+  await init(d, true);
+  const lock = readFileSync(join(d, '.loom/regions.lock'));
+  const r = await init(d, true);
+  expect(r).toMatchObject({ state: 'C', committed: false, pending: false });
+  expect(printSummary(r)).toMatch(/\.loom\/ up to date in git/);   // nothing to commit is not "not committed"
+  expect(git(d, 'status', '--porcelain')).toBe('');
+  expect(readFileSync(join(d, '.loom/regions.lock')).equals(lock)).toBe(true);
+});
+
+test('state C: a clone of a Loom repo with a session imports the same sessions and gets its hooks', async () => {
+  const b = dir({ 'a.py': 'def f():\n    return 1\n' }, true);
+  const rb = await init(b, true);
+  const g = db.graph(graphName(tenant(), repoId(b)));
+  await startSession(g, b, { person: 'b@t', kind: 'interactive' });
+  await finishSession(g, b, {});
+  await importSessions(g, b, null);
+  const [{ n }] = await g.query<{ n: number }>('MATCH (s:Session) RETURN count(s) AS n');
+  expect(n).toBe(rb.summary.sessions + 1);
+  git(b, 'add', '.loom'); git(b, 'commit', '-qm', 'session');
+  const c = mkdtempSync(join(tmpdir(), 'loom-states-c-'));
+  execFileSync('git', ['clone', '-q', b, c]);
+  // another tenant, so C reads its own graph and every session it counts came from the clone's files
+  const rc = await initRepo(c, { hookCmd: 'h', loomCmd: 'l', db, tenant: 'b1-clone' });
+  expect(rc.state).toBe('C');
+  expect(rc.summary.sessions).toBe(n);
+  expect(rc.summary.people).toBeGreaterThanOrEqual(1);
+  expect(rc.summary.last).not.toBeNull();
+  expect(JSON.parse(readFileSync(join(c, '.claude/settings.local.json'), 'utf8')).hooks.SessionStart).toBeTruthy();
+  await db.graph(graphName('b1-clone', repoId(c))).drop();
 });

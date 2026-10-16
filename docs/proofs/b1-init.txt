@@ -1,0 +1,52 @@
+# B1 proof — real loom CLI (branch feat/b1-init, base 1fca1ea + working tree), 2026-10-16T15:41:34Z
+# temp repos under the session scratchpad; path prefix shown as $SP
+
+## A: git init, files, no commits →  loom init --no-lead --commit
+state A: no commits yet: made a first commit, then set Loom up
+config  $SP/A/.loom/config.json
+hooks   $SP/A/.claude/settings.local.json
+files 4 · regions ts 1, python 1, json 1 · degraded 0
+sessions 0 · people 1 · last activity none
+test none found · compile npx tsc --noEmit -p .
+committed .loom/
+start the lead with `loom lead`
+exit 0
+  log: loom: init
+  log: loom: initial commit
+
+## B: one commit, no .loom →  loom init --no-lead --commit
+state B: set Loom up for the first time
+config  $SP/B/.loom/config.json
+hooks   $SP/B/.claude/settings.local.json
+files 1 · regions python 1 · degraded 0
+sessions 0 · people 1 · last activity none
+test none found · compile none
+committed .loom/
+start the lead with `loom lead`
+exit 0
+  log: loom: init
+  log: base
+
+## B again (idempotent) →  loom init --no-lead --commit
+state C: Loom was already set up here: caught up and checked it
+config  $SP/B/.loom/config.json
+hooks   $SP/B/.claude/settings.local.json
+files 1 · regions python 1 · degraded 0
+sessions 0 · people 1 · last activity none
+test none found · compile none
+.loom/ up to date in git
+start the lead with `loom lead`
+exit 0
+  git status --porcelain: []
+
+## C: clone of B →  loom init --no-lead
+state C: Loom was already set up here: caught up and checked it
+config  $SP/C/.loom/config.json
+hooks   $SP/C/.claude/settings.local.json
+files 1 · regions python 1 · degraded 0
+sessions 0 · people 1 · last activity none
+test none found · compile none
+.loom/ up to date in git
+start the lead with `loom lead`
+exit 0
+  git status --porcelain: []

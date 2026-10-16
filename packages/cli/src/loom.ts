@@ -84,10 +84,19 @@ export interface InitSummary { files: number; regions: Record<string, number>; d
   last: number | null; compile: string | null; test: string | null }
 const IDENT = (root: string) => (gitTry(root, 'config', 'user.email') ? [] : ['-c', 'user.name=Loom', '-c', 'user.email=loom@localhost']);
 /** The Loom files a teammate needs: config, lock, merge attributes and the session records. Run scratch never goes in. */
-function commitLoom(root: string): boolean {
+function loomPaths(root: string): string[] {
   const paths = ['.loom/config.json', '.loom/.gitattributes', '.loom/regions.lock'].filter((p) => existsSync(join(root, p)));
   const sd = join(root, '.loom', 'sessions');
   if (existsSync(sd)) paths.push(...readdirSync(sd).filter((f) => f.endsWith('.jsonl')).map((f) => `.loom/sessions/${f}`));
+  return paths;
+}
+/** True when some Loom file is untracked or differs from HEAD. */
+function loomPending(root: string): boolean {
+  const paths = loomPaths(root);
+  return paths.length > 0 && git(root, 'status', '--porcelain', '--', ...paths) !== '';
+}
+function commitLoom(root: string): boolean {
+  const paths = loomPaths(root);
   if (!paths.length) return false;
   git(root, 'add', '--', ...paths);
   if (spawnSync('git', ['diff', '--cached', '--quiet', '--', ...paths], { cwd: root }).status === 0) return false;
@@ -101,13 +110,13 @@ export async function askYes(q: string): Promise<boolean> {
   try { return !/^n/i.test((await rl.question(q)).trim()); } finally { rl.close(); }
 }
 const STATE = { A: 'no commits yet: made a first commit, then set Loom up', B: 'set Loom up for the first time', C: 'Loom was already set up here: caught up and checked it' };
-export function printSummary(r: { state: 'A' | 'B' | 'C'; committed: boolean; summary: InitSummary; config: string; settings: string }): string {
+export function printSummary(r: { state: 'A' | 'B' | 'C'; committed: boolean; pending: boolean; summary: InitSummary; config: string; settings: string }): string {
   const s = r.summary;
   const regions = Object.entries(s.regions).sort((a, b) => b[1] - a[1]).map(([l, n]) => `${l} ${n}`).join(', ') || 'none';
   return [`state ${r.state}: ${STATE[r.state]}`, `config  ${r.config}`, `hooks   ${r.settings}`,
     `files ${s.files} · regions ${regions} · degraded ${s.degraded}`,
     `sessions ${s.sessions} · people ${s.people} · last activity ${s.last ? new Date(s.last).toISOString() : 'none'}`,
-    `test ${s.test ?? 'none found'} · compile ${s.compile ?? 'none'}`, r.committed ? 'committed .loom/' : '.loom/ not committed'].join('\n');
+    `test ${s.test ?? 'none found'} · compile ${s.compile ?? 'none'}`, r.committed ? 'committed .loom/' : r.pending ? '.loom/ not committed' : '.loom/ up to date in git'].join('\n');
 }
 
 export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: string; loomCmd: string; tenant?: string; testCmd?: string; db?: LoomDb;
@@ -162,7 +171,7 @@ export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: stri
     const summary: InitSummary = { files: s.files, regions, degraded: s.degraded.length, sessions, people, last: last ?? null,
       compile: (cfg as LoomConfig).compile ?? null, test: cfg.testCmd ?? null };
     const committed = o.commit === true && commitLoom(mainRoot);
-    return { mainRoot, config: cfgPath, settings: sp, state, committed, summary, text };
+    return { mainRoot, config: cfgPath, settings: sp, state, committed, pending: loomPending(mainRoot), summary, text };
   } finally { if (!o.db) await db.close(); }
 }
 
@@ -236,7 +245,7 @@ export async function main(argv: string[]): Promise<number> {
         mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs'), loomCmd: `node ${join(loomRoot(), 'packages', 'cli', 'dist', 'loom.cjs')}` });
     } catch (e) { console.error(`loom init: ${(e as Error).message}`); return 1; }
     console.log(printSummary(r));
-    if (!r.committed) console.log('next: commit .loom/ (it carries the regions lock and session records to teammates)');
+    if (r.pending) console.log('next: commit .loom/ (it carries the regions lock and session records to teammates)');
     if (!tty || rest.includes('--no-lead')) { console.log('start the lead with `loom lead`'); return 0; }
     if (!(await askYes('Start the lead now? [Y/n] '))) { console.log('start the lead later with `loom lead`'); return 0; }
     return startLead(process.cwd(), {});
