@@ -155,3 +155,19 @@ test('v2 run: /runs/<run>/notices lists the run\'s notices (wake for a waiter) f
     body: JSON.stringify({ run, agent: 'y' }) })).json();
   expect(t.text).toContain('x');
 });
+
+test('v2 run: a notice that arrives after y\'s last tool call is delivered at y\'s Stop (block once), and the next Stop passes', async () => {
+  const { wts, as } = await v2run();
+  const [x, y] = [as('x'), as('y')];
+  expect(deny((await on(y, 'PreToolUse', edit(wts.y, 'return f(1)', 'return f(2)'))).json)).toBeNull();
+  apply(wts.y, 'return f(1)', 'return f(2)');
+  await on(y, 'PostToolUse', edit(wts.y, 'return f(1)', 'return f(2)'));          // y's last tool call
+  expect(deny((await on(x, 'PreToolUse', edit(wts.x, 'def f(x):', 'def f(x, y=0):'))).json)).toBeNull();
+  apply(wts.x, 'def f(x):', 'def f(x, y=0):');
+  await on(x, 'PostToolUse', edit(wts.x, 'def f(x):', 'def f(x, y=0):'));
+  const s1 = await on(y, 'Stop', { stop_hook_active: false });
+  expect(s1.json?.decision).toBe('block');
+  expect(String(s1.json?.reason)).toContain('changed f');
+  const s2 = await on(y, 'Stop', { stop_hook_active: true });
+  expect(s2.json?.decision).toBeUndefined();
+});

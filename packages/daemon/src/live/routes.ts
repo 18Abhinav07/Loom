@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LoomDb, LoomGraph } from '@loom/core';
 import { DEFAULT_EXCLUDES, gitTry, indexRepo } from '@loom/memory';
-import { contextJson, denyJson, parsePostToolUse, parsePreToolUse, type ClaudeHookInput } from '../claude.js';
+import { contextJson, denyJson, parsePostToolUse, parsePreToolUse, stopBlockJson, type ClaudeHookInput } from '../claude.js';
 import { holders } from '../lease.js';
 import { resolveRepo } from '../repo.js';
 import { Live } from './live.js';
@@ -73,10 +73,13 @@ export class LiveRoutes {
       const it = parsePostToolUse(input, root);
       if (it.kind === 'edit') await live.postEdit(agent, it.file);
       if (it.kind === 'bash') await live.unseen(agent);
-    } else if (event !== 'SessionStart' && event !== 'UserPromptSubmit') return '';
+    } else if (event !== 'SessionStart' && event !== 'UserPromptSubmit' && event !== 'Stop') return '';
     await live.syncIfPending(agent);
     const ns = await live.takeNotices(agent);
-    return ns.length ? contextJson(event, ns.map((n) => n.text).join('\n\n')) : '';
+    if (!ns.length) return '';
+    const text = ns.map((n) => n.text).join('\n\n');
+    // a notice that arrived after the agent's last tool call has no later hook to ride on: block that Stop once with it
+    return event === 'Stop' ? stopBlockJson(text) : contextJson(event, text);
   }
 
   async mcp(tool: string, t: Target, a: any): Promise<{ handled: boolean; result?: unknown }> {
