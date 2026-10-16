@@ -11,6 +11,7 @@ import datetime as dt
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -113,7 +114,19 @@ def agent_env(base) -> dict:
     return env
 
 
-def run_cond(sc: Scenario, cond: str, out: Path, model: str) -> dict:
+def archive(repo: Path, run: str, base: str, out: Path, tag: str) -> None:
+    """Keep the evidence (agent transcripts, every Loom branch as a diff from base), then drop the clone: ~0.5 GB each."""
+    tdir = repo / ".loom" / "runs" / re.sub(r"[^\w.-]+", "_", run)
+    if tdir.exists():
+        shutil.copytree(tdir, out / "transcripts" / tag, dirs_exist_ok=True)
+    ddir = out / "diffs" / tag
+    ddir.mkdir(parents=True, exist_ok=True)
+    for b in _git("for-each-ref", "--format=%(refname:short)", "refs/heads/loom/", cwd=repo).split():
+        (ddir / f"{b.replace('/', '_')}.diff").write_text(_git("diff", base, b, cwd=repo))
+    shutil.rmtree(repo)
+
+
+def run_cond(sc: Scenario, cond: str, out: Path, model: str, keep: bool = False) -> dict:
     tag = f"{sc.id}__{cond}"
     repo = make_repo(sc.base, out / "repos" / tag)
     plan_f = out / "plans" / f"{tag}.json"
@@ -129,7 +142,10 @@ def run_cond(sc: Scenario, cond: str, out: Path, model: str) -> dict:
     (out / "logs").mkdir(exist_ok=True)
     (out / "logs" / f"{tag}.cli.txt").write_text(p.stdout + p.stderr)
     rep = json.loads(rep_f.read_text())
-    return grade(sc, cond, repo, rep, wall)
+    r = grade(sc, cond, repo, rep, wall)
+    if not keep:
+        archive(repo, rep["run"], sc.base, out, tag)
+    return r
 
 
 def verdict(conflict, tests_passed, merged: dict, integration) -> dict:
@@ -197,6 +213,7 @@ def main() -> None:
     ap.add_argument("--conds", default="blind,loom")
     ap.add_argument("--model", default="sonnet")
     ap.add_argument("--skip-done", type=Path, default=None)
+    ap.add_argument("--keep-repos", action="store_true", help="keep each scenario's clone (~0.5 GB) instead of archiving it")
     a = ap.parse_args()
     out = (a.skip_done or RUNS / dt.datetime.now().strftime("%Y%m%d-%H%M%S")).resolve()   # the CLI runs inside the scenario repo
     out.mkdir(parents=True, exist_ok=True)
@@ -208,7 +225,7 @@ def main() -> None:
         for cond in a.conds.split(","):
             if (sc.id, cond) in done:
                 continue
-            r = run_cond(sc, cond, out, a.model)
+            r = run_cond(sc, cond, out, a.model, a.keep_repos)
             if any(x["limit"] for x in r["agents"].values()):
                 print(f"usage limit reached; continue with --skip-done {out}")
                 raise SystemExit(3)

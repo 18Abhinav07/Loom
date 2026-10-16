@@ -61,3 +61,22 @@ def test_verdict_agent_ok_only_from_the_full_final_merge():
     assert v["agents_ok"] == 1 and v["all_pass"] is False and v["failed"] == ["b"]
     assert verdict(conflict=None, tests_passed=True, merged={"a": True}, integration=False)["all_pass"] is False
     assert verdict(conflict=None, tests_passed=True, merged={"a": True}, integration=None)["all_pass"] is True
+
+
+def test_archive_keeps_transcripts_and_branch_diffs_then_drops_the_clone(tmp_path: Path):
+    import subprocess
+    from e5.run import archive
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    g = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=repo, check=True, capture_output=True)
+    (repo / "m.py").write_text("x = 1\n")
+    g("init", "-q"); g("add", "-A"); g("commit", "-qm", "base")
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+    g("checkout", "-qb", "loom/abcd1234/landed"); (repo / "m.py").write_text("x = 2\n"); g("commit", "-qam", "a")
+    tdir = repo / ".loom" / "runs" / "run_1"
+    tdir.mkdir(parents=True)
+    (tdir / "a.jsonl").write_text('{"type":"result"}\n')
+    archive(repo, "run:1", base, tmp_path / "out", "t1__loom")
+    assert (tmp_path / "out" / "transcripts" / "t1__loom" / "a.jsonl").read_text() == '{"type":"result"}\n'
+    assert "+x = 2" in (tmp_path / "out" / "diffs" / "t1__loom" / "loom_abcd1234_landed.diff").read_text()
+    assert not repo.exists()

@@ -12,6 +12,7 @@ export class LoomDb {
       socket: { host: u.hostname, port: Number(u.port || 6379) },
       username: u.username || undefined,
       password: u.password || undefined,
+      database: Number(u.pathname.slice(1) || 0),   // redis://host:port/N: the test suite runs in its own keyspace
     });
     return new LoomDb(client);
   }

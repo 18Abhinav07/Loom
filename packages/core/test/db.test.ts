@@ -12,3 +12,13 @@ test('parameterized write and read round-trip', async () => {
 });
 
 test('ensureSchema is idempotent', async () => { await ensureSchema(g); });
+
+test('a database number in the URL selects a separate keyspace: a graph in /2 is not listed in /3', async () => {
+  const [a, b] = [await LoomDb.connect('redis://127.0.0.1:6379/2'), await LoomDb.connect('redis://127.0.0.1:6379/3')];
+  const name = `test:dbsel:${Date.now()}`;
+  await a.graph(name).query('CREATE (:X)');
+  try {
+    expect(await a.list()).toContain(name);
+    expect(await b.list()).not.toContain(name);
+  } finally { await a.graph(name).drop(); await a.close(); await b.close(); }
+});
