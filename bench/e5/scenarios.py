@@ -30,6 +30,7 @@ class Scenario:
     kind: str = field(default="pair")
     brief: str = ""                  # team scenarios: the feature every agent is told about, with everyone's assignment
     integration: str = ""            # oracle over everyone's work together, on the merged tree
+    apps: tuple[str, ...] = ()       # INSTALLED_APPS the oracles need (e.g. admin models)
 
 
 RULES = ("Make every file change with the Edit/Write tools (shell redirection is not allowed). Do not run the full "
@@ -211,6 +212,53 @@ FILENAME4 = Scenario("s3_filename4", "afe6634146d0fe70498976c49d2eb4d745aa9064",
                 "self.assertEqual(m.unique_filename('  Über Datei.pdf', {'Uber_Datei.pdf'}, allow_unicode=False), 'Uber_Datei_2.pdf')\n"
                 "self.assertEqual(m.unique_filename('my__report.txt', {'my_report.txt'}, max_length=13), 'my_repo_2.txt')\n")
 
-SCENARIOS += [SLUG4, TRUNC4, FILENAME4]
+ADMIN_MODELS = "django/contrib/admin/models.py"
+TEXTLIST = Scenario("x1_textlist", "afe6634146d0fe70498976c49d2eb4d745aa9064", (
+    Agent("a", "format_list API",
+          "Rename django.utils.text.get_text_list to `format_list(items, *, conjunction)`: same output, but the "
+          "conjunction is a REQUIRED keyword-only argument (no default). The old name must disappear completely (no "
+          "alias, no wrapper). Update every caller in django/ (admin, management commands, db models, forms, template "
+          "parser) and tests/ to the new name, passing the conjunction they used before (where they relied on the "
+          "default, pass the old default, gettext_lazy('or'), so translations keep working).",
+          "self.assertEqual(m.format_list(['a', 'b', 'c'], conjunction='and'), 'a, b and c')\n"
+          "self.assertEqual(m.format_list(['a'], conjunction='or'), 'a')\n"
+          "self.assertEqual(m.format_list([], conjunction='or'), '')\n"
+          "self.assertFalse(hasattr(m, 'get_text_list'))\n"
+          "with self.assertRaises(TypeError):\n    m.format_list(['a', 'b'])\n",
+          scope=(f"{TEXT}::get_text_list",)),
+    Agent("b", "format_count_list + joinlist filter",
+          "Add `format_count_list(items, limit, *, conjunction)` to django/utils/text.py: with at most `limit` items it "
+          "is the module's list formatter; with more, it formats the first `limit` items plus a last item 'N other' "
+          "(N == 1) or 'N others', e.g. 'a, b, c and 2 others'. REUSE the module's list formatter. Also add a "
+          "`joinlist` template filter to django/template/defaultfilters.py: `{{ items|joinlist:\"or\" }}` formats the "
+          "list with that conjunction (default 'and'), reusing the same formatter.",
+          "self.assertEqual(m.format_count_list(['a', 'b', 'c', 'd', 'e'], 3, conjunction='and'), 'a, b, c and 2 others')\n"
+          "self.assertEqual(m.format_count_list(['a', 'b', 'c', 'd'], 3, conjunction='or'), 'a, b, c or 1 other')\n"
+          "self.assertEqual(m.format_count_list(['a', 'b'], 3, conjunction='and'), 'a and b')\n"),
+    Agent("c", "admin history caps changed fields",
+          "In the admin change history (LogEntry.get_change_message in django/contrib/admin/models.py), a 'changed' "
+          "entry lists at most 3 field names and summarises the rest, e.g. 'Changed a, b, c and 2 others.', using "
+          "django.utils.text.format_count_list(items, limit, *, conjunction), which agent b is adding now. Do not "
+          "re-implement it. Entries with 3 or fewer fields read as today.",
+          "import json\nfrom django.contrib.admin.models import LogEntry\n"
+          "msg = lambda fs: LogEntry(change_message=json.dumps([{'changed': {'fields': fs}}])).get_change_message()\n"
+          "self.assertEqual(msg(['a', 'b', 'c', 'd', 'e']), 'Changed a, b, c and 2 others.')\n"
+          "self.assertEqual(msg(['Title', 'History']), 'Changed Title and History.')\n",
+          needs=("b",)),
+), ("utils_tests.test_text", "admin_utils.test_logentry", "validation.test_unique", "template_tests.test_parser"),
+    kind="team", apps=("django.contrib.contenttypes", "django.contrib.auth", "django.contrib.admin"),
+    brief="Feature: list formatting across Django. django.utils.text.get_text_list is renamed to "
+          "`format_list(items, *, conjunction)` (conjunction now required, keyword-only; the old name is removed and "
+          "every caller moves over); django.utils.text gains `format_count_list(items, limit, *, conjunction)`; "
+          "templates get a `joinlist` filter; the admin change history caps the changed-field list at 3.",
+    integration="self.assertFalse(hasattr(m, 'get_text_list'))\n"
+                "self.assertEqual(m.format_count_list(['a', 'b', 'c', 'd'], 2, conjunction='and'), 'a, b and 2 others')\n"
+                + FILTERS + "self.assertEqual(r('{{ v|joinlist:\"or\" }}', v=['x', 'y', 'z']), 'x, y or z')\n"
+                "self.assertEqual(r('{{ v|joinlist }}', v=['x', 'y']), 'x and y')\n"
+                "import json\nfrom django.contrib.admin.models import LogEntry\n"
+                "self.assertEqual(LogEntry(change_message=json.dumps([{'changed': {'fields': list('abcd')}}])).get_change_message(), 'Changed a, b, c and 1 other.')\n")
+
+SCENARIOS += [SLUG4, TRUNC4, FILENAME4, TEXTLIST]
 PILOT = ["p1_slugify", "p2_phone", "t1_slugpath"]
 TEAM = ["s1_slug4", "s2_trunc4", "s3_filename4"]
+COMPLEX = ["x1_textlist"]   # cross-module: a contract change, new callers of it, and an overlapping edit that builds on them

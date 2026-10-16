@@ -23,7 +23,7 @@ from pathlib import Path
 
 from e1.django_ws import BENCH, MIRROR, ensure_mirror
 
-from .scenarios import PILOT, RULES, SCENARIOS, TEAM, Agent, Scenario
+from .scenarios import COMPLEX, PILOT, RULES, SCENARIOS, TEAM, Agent, Scenario
 
 ROOT = BENCH.parent
 CLI = ROOT / "packages" / "cli" / "dist" / "loom.cjs"
@@ -36,7 +36,7 @@ ORACLE = textwrap.dedent('''\
     try:
         import django
         from django.conf import settings
-        settings.configure(USE_I18N=False)
+        settings.configure(USE_I18N=False, INSTALLED_APPS={apps!r})
         django.setup()
     except Exception:
         pass
@@ -67,9 +67,9 @@ def plan_for(sc: Scenario, repo: Path) -> dict:
             "tasks": [{"id": a.id, "title": a.title, "prompt": prompt_for(sc, a), "scope": list(a.scope)} for a in sc.agents]}
 
 
-def check(tree: Path, agent: Agent) -> tuple[bool, str]:
+def check(tree: Path, agent: Agent, apps: tuple[str, ...] = ()) -> tuple[bool, str]:
     """Agent's oracle against a source tree: (passed, error tail)."""
-    code = ORACLE.format(body=textwrap.indent(agent.oracle, " " * 8))
+    code = ORACLE.format(body=textwrap.indent(agent.oracle, " " * 8), apps=list(apps))
     p = subprocess.run([PY, "-c", code], cwd=tree, capture_output=True, text=True, timeout=120,
                        env={**os.environ, "PYTHONPATH": str(tree), "PYTHONDONTWRITEBYTECODE": "1"})
     return (True, "") if p.returncode == 0 else (False, (p.stdout + p.stderr)[-600:])
@@ -126,8 +126,8 @@ def archive(repo: Path, run: str, base: str, out: Path, tag: str) -> None:
     shutil.rmtree(repo)
 
 
-def run_cond(sc: Scenario, cond: str, out: Path, model: str, keep: bool = False) -> dict:
-    tag = f"{sc.id}__{cond}"
+def run_cond(sc: Scenario, cond: str, out: Path, model: str, keep: bool = False, rep: int = 0) -> dict:
+    tag = f"{sc.id}__{cond}" + (f"__r{rep}" if rep else "")
     repo = make_repo(sc.base, out / "repos" / tag)
     plan_f = out / "plans" / f"{tag}.json"
     plan_f.parent.mkdir(parents=True, exist_ok=True)
@@ -142,7 +142,7 @@ def run_cond(sc: Scenario, cond: str, out: Path, model: str, keep: bool = False)
     (out / "logs").mkdir(exist_ok=True)
     (out / "logs" / f"{tag}.cli.txt").write_text(p.stdout + p.stderr)
     rep = json.loads(rep_f.read_text())
-    r = grade(sc, cond, repo, rep, wall)
+    r = {**grade(sc, cond, repo, rep, wall), "rep": rep}
     if not keep:
         archive(repo, rep["run"], sc.base, out, tag)
     return r
@@ -169,16 +169,16 @@ def grade(sc: Scenario, cond: str, repo: Path, rep: dict, wall: float) -> dict:
         if not a.needs and w.get("commit"):
             st = repo / ".loom" / "solo" / a.id
             _git("worktree", "add", "-q", "--detach", str(st), w["commit"], cwd=repo)
-            solo = check(st, a)[0]
+            solo = check(st, a, sc.apps)[0]
             _git("worktree", "remove", "--force", str(st), cwd=repo, check=False)
-        merged, err = check(merged_tree, a)
+        merged, err = check(merged_tree, a, sc.apps)
         mine = [n for n in notices if n.get("agent") == a.id]
         agents[a.id] = {"exit": w["exit"], "commit": bool(w.get("commit")), "resumed": w.get("resumed", 0),
                         "solo": solo, "merged": merged, "err": err[-300:],
                         "notices": len(mine), "delivered": sum(n.get("deliveredAt") is not None for n in mine),
                         **_transcript_stats(tdir / f"{a.id}.jsonl")}
     conflict = rep["merge"]["conflict"]
-    integ = check(merged_tree, Agent("integration", "", "", sc.integration)) if sc.integration and not conflict else (None, "")
+    integ = check(merged_tree, Agent("integration", "", "", sc.integration), sc.apps) if sc.integration and not conflict else (None, "")
     return {"scenario": sc.id, "kind": sc.kind, "cond": cond, "run": run, "wall_s": wall,
             "conflict": conflict, "tests_passed": rep["merge"]["testsPassed"],
             "integration": integ[0] if sc.integration else None, "integration_err": integ[1][-300:],
@@ -213,26 +213,26 @@ def main() -> None:
     ap.add_argument("--conds", default="blind,loom")
     ap.add_argument("--model", default="sonnet")
     ap.add_argument("--skip-done", type=Path, default=None)
+    ap.add_argument("--reps", type=int, default=1, help="runs per scenario and condition; conditions alternate inside each rep")
     ap.add_argument("--keep-repos", action="store_true", help="keep each scenario's clone (~0.5 GB) instead of archiving it")
     a = ap.parse_args()
     out = (a.skip_done or RUNS / dt.datetime.now().strftime("%Y%m%d-%H%M%S")).resolve()   # the CLI runs inside the scenario repo
     out.mkdir(parents=True, exist_ok=True)
     rec_f = out / "records.jsonl"
     recs = [json.loads(l) for l in rec_f.read_text().splitlines()] if rec_f.exists() else []
-    done = {(r["scenario"], r["cond"]) for r in recs}
-    ids = {"pilot": PILOT, "team": TEAM, "all": [s.id for s in SCENARIOS]}.get(a.set) or a.set.split(",")
-    for sc in (s for s in SCENARIOS if s.id in ids):
-        for cond in a.conds.split(","):
-            if (sc.id, cond) in done:
+    done = {(r["scenario"], r["cond"], r.get("rep", 0)) for r in recs}
+    ids = {"pilot": PILOT, "team": TEAM, "complex": COMPLEX, "all": [s.id for s in SCENARIOS]}.get(a.set) or a.set.split(",")
+    for sc, rep, cond in ((s, i, c) for s in SCENARIOS if s.id in ids for i in range(a.reps) for c in a.conds.split(",")):
+            if (sc.id, cond, rep) in done:
                 continue
-            r = run_cond(sc, cond, out, a.model, a.keep_repos)
+            r = run_cond(sc, cond, out, a.model, a.keep_repos, rep)
             if any(x["limit"] for x in r["agents"].values()):
                 print(f"usage limit reached; continue with --skip-done {out}")
                 raise SystemExit(3)
             recs.append(r)
             with open(rec_f, "a") as f:
                 f.write(json.dumps(r) + "\n")
-            print(f"{sc.id:12} {cond:5} all_pass={r['all_pass']!s:5} broken={r['broken']} conflict={r['conflict']} "
+            print(f"{sc.id:12} {cond:5} r{rep} all_pass={r['all_pass']!s:5} broken={r['broken']} conflict={r['conflict']} "
                   + " ".join(f"{k}:{'ok' if v['merged'] else 'FAIL'}" for k, v in r["agents"].items()) + f" {r['wall_s']}s", flush=True)
     print(summarize(recs))
     print(f"records: {rec_f}")
