@@ -191,10 +191,11 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
               if (t) await live.hook(parts[2], t, input);   // registers on start, releases leases on end
               if (parts[2] === 'SessionStart') {
                 const person = gitTry(repo.top, 'config', 'user.email') ?? 'unknown';
-                const { briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive' });
+                const { briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive', claudeSid: input.session_id ?? null,
+                  writer: req.headers['x-loom-lead'] === '1' ? 'lead' : 'main', surface: 'terminal' });
                 return send(200, { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: briefing } });
               }
-              await finishSession(repo.graph, repo.top, { transcriptPath: (input as any).transcript_path });
+              await finishSession(repo.graph, repo.top, { transcriptPath: (input as any).transcript_path, claudeSid: input.session_id ?? null });
               return send(200, {});
             }
           }
