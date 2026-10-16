@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { LoomDb, type FileIndex } from '@loom/core';
+import { LoomDb, type FileIndex, type LoomGraph } from '@loom/core';
 import { contextJson, denyJson, parsePostToolUse, parsePreToolUse, stopBlockJson, type ClaudeHookInput } from './claude.js';
 import { resolveAttach } from './attach.js';
 import { Coordinator } from './coordinator.js';
@@ -15,7 +15,7 @@ import { EventBus, Recorder } from './events.js';
 import { TraceWriter } from './trace.js';
 import { Reply, startUi } from './ui.js';
 import { BenchRun, type BenchRunner } from './benchrun.js';
-import { llmPlan, partition, scope, validatePlan, type PlanTask } from '@loom/planner';
+import { checkTeamPlan, listPlans, parseTeamPlan, partition, scope, validatePlan, type PlanTask } from '@loom/planner';
 import { renderWhy, why } from './why.js';
 import { filePatch, replay, type ReplayProgress } from './replay.js';
 import { resolveRepo } from './repo.js';
@@ -320,18 +320,27 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         const r = await runFor(String(b.run ?? ''), b.cwd);
         if (!r) return send(404, { error: 'run not loaded' });
         const g = opts.db.graph(r.c.run);
-        let tasks: PlanTask[];
-        if (b.plan) tasks = validatePlan(b.plan).tasks;
-        else {
-          const top = await scope(g, { title: String(b.goal ?? ''), prompt: '' }, 20);
-          tasks = await llmPlan(String(b.goal ?? ''), { modules: r.c.dirs, top }, { cwd: r.root });
-        }
+        if (!b.plan) return send(400, { error: 'need {plan}: write a team plan (.loom/plans/<slug>.md) and check it with loom plan check' });
+        const tasks: PlanTask[] = validatePlan(b.plan).tasks;
         const scopes = new Map<string, string[]>();
         for (const t of tasks) scopes.set(t.id, await scope(g, t));
         const p = await partition(g, scopes);
         const comp = new Map(p.components.flatMap((ts, i) => ts.map((t) => [t, i] as const)));
         r.c.plan = { tasks: tasks.map((t) => ({ ...t, scope: scopes.get(t.id)!, component: comp.get(t.id) ?? -1 })), hubs: p.hubs, hubOwner: p.hubOwner };
         return send(200, r.c.plan);
+      }
+      if (parts[0] === 'plans') {   // §3.3: team plans in .loom/plans/ and the checker; the repo comes from the caller's cwd
+        const b = req.method === 'POST' ? await body(req) : {};
+        const repo = await resolveRepo(opts.db, String(b.cwd ?? u.searchParams.get('cwd') ?? req.headers['x-loom-cwd'] ?? ''), req.headers['x-loom-home'] as string | undefined);
+        if (!repo) return send(404, { error: 'not a Loom repo (run loom init)' });
+        if (req.method === 'GET' && parts.length === 1) return send(200, listPlans(repo.top));
+        if (req.method === 'GET' && parts.length === 2) {
+          const f = join(repo.top, '.loom', 'plans', `${parts[1]}.md`);
+          if (!/^[\w.-]+$/.test(parts[1]) || !existsSync(f)) return send(404, { error: `no plan ${parts[1]} in .loom/plans/` });
+          const text = readFileSync(f, 'utf8');
+          return send(200, { slug: parts[1], text, ...parseTeamPlan(text) });
+        }
+        if (req.method === 'POST' && parts[1] === 'check') return send(200, await checkPlanAt(repo, b));
       }
       if (req.method === 'GET' && u.pathname === '/plan') {
         const c = runs.get(u.searchParams.get('run') ?? '');
@@ -462,6 +471,16 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   const benchRun = new BenchRun(opts.benchRoot ?? resolve(BENCH, '..'), opts.benchRunner);
 
   /** Read-only (public) mode answers only for the runs this daemon serves: a query on any other name would read, or create, that graph. */
+  /** POST /plans/check: {text} | {slug} | {file} (relative to the caller's cwd). A malformed plan is ok:false, never a 500. */
+  async function checkPlanAt(repo: { top: string; graph: LoomGraph }, b: any) {
+    const f = b.slug ? join(repo.top, '.loom', 'plans', `${String(b.slug)}.md`) : b.file ? resolve(String(b.cwd ?? repo.top), String(b.file)) : null;
+    if (f && !existsSync(f)) return { ok: false, problems: [`no plan file at ${f}`], warnings: [] };
+    const { plan, problems } = parseTeamPlan(f ? readFileSync(f, 'utf8') : String(b.text ?? ''));
+    if (!plan) return { ok: false, problems, warnings: [] };
+    const regionPaths = (await repo.graph.query<{ path: string }>('MATCH (r:Region) RETURN r.path AS path').catch(() => [])).map((r) => r.path);
+    const files = (ref: string) => { const out = gitTry(repo.top, 'ls-tree', '-r', '--name-only', ref); if (out === null) throw new Error(`unknown ref ${ref}`); return out.split('\n').filter(Boolean); };
+    return { ...checkTeamPlan(plan, { files, regions: regionPaths.length, regionPaths }), plan };
+  }
   function serves(run: string) { return !opts.readOnly || runs.has(run); }
 
   await new Promise<void>((r) => server.listen(opts.port, opts.host ?? '127.0.0.1', r));

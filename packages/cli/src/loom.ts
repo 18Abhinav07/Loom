@@ -411,11 +411,30 @@ export async function main(argv: string[]): Promise<number> {
       c.strength == null ? '-' : c.strength.toFixed(2), c.blindSpots?.length ? `blind: ${c.blindSpots.join(', ')}` : c.missing ?? '']));
     return claims.every((c: any) => c.state === 'VERIFIED' && !c.blindSpots?.length) ? 0 : 1;
   }
-  if (cmd === 'plan') {
+  if (cmd === 'plan' && ['ls', 'show', 'check'].includes(rest[0])) {   // §3.3: team plans in .loom/plans/ and the checker
+    const [sub, arg] = rest;
+    if (sub !== 'ls' && !arg) { console.error(`usage: loom plan ${sub} <slug${sub === 'check' ? ' | file' : ''}>`); return 1; }
+    const cwd = process.cwd();
+    let r: Response;
+    try {
+      r = sub === 'ls' ? await fetch(`${DAEMON}/plans?cwd=${encodeURIComponent(cwd)}`)
+        : sub === 'show' ? await fetch(`${DAEMON}/plans/${encodeURIComponent(arg)}?cwd=${encodeURIComponent(cwd)}`)
+        : await fetch(`${DAEMON}/plans/check`, { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ cwd, ...(existsSync(resolve(cwd, arg)) ? { file: arg } : { slug: arg }) }) });
+    } catch (e) { return failed(e); }
+    const j = await r.json();
+    if (!r.ok) { console.error(j.error); return 1; }
+    if (sub === 'ls') { table('plans (.loom/plans/)', ['slug', 'tasks', 'goal'], j.map((p: any) => [p.slug, String(p.tasks), p.goal.slice(0, 70)])); return 0; }
+    if (sub === 'show') { console.log(j.text); return 0; }
+    for (const p of j.problems) console.log(`problem: ${p}`);
+    for (const w of j.warnings) console.log(`warning: ${w}`);
+    console.log(j.ok ? `ok: ${j.plan.tasks.length} task(s); a team can start from this plan` : `not ok: ${j.problems.length} problem(s); fix them before a team starts`);
+    return j.ok ? 0 : 1;
+  }
+  if (cmd === 'plan') {   // the bench's symbol partition of a v1 plan file
     const file = flag(rest, '--plan');
-    const goal = rest.find((x, i) => !x.startsWith('--') && !['--plan', '--run'].includes(rest[i - 1]));
-    if (!file && !goal) { console.error('usage: loom plan (--plan <file> | "<goal>") [--run R]'); return 1; }
-    const req = { run: flag(rest, '--run') ?? '', cwd: process.cwd(), ...(file ? { plan: loadPlan(file) } : { goal }) };
+    if (!file) { console.error('usage: loom plan ls | show <slug> | check <slug | file>   (bench: loom plan --plan <file> [--run R])'); return 1; }
+    const req = { run: flag(rest, '--run') ?? '', cwd: process.cwd(), plan: loadPlan(file) };
     let r: Response;
     try { r = await fetch(`${DAEMON}/plan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(req) }); }
     catch (e) { return failed(e); }

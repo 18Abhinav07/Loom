@@ -10,7 +10,7 @@ import { join } from 'node:path';
 export interface LoomMcpOpts { url: string; agent: string; run: string; cwd: string }
 type Result = { content: { type: 'text'; text: string }[]; isError?: boolean };
 
-/** Spec §3.3: the 12 coordination tools, each a thin POST to the daemon's `/mcp/<tool>` route. */
+/** Spec §3.3: the 12 coordination tools (plus B3's check_plan), each a thin POST to the daemon's `/mcp/<tool>` route. */
 export function createLoomMcp(o: LoomMcpOpts): McpServer {
   const server = new McpServer({ name: 'loom', version: '0.3.0' }, {
     capabilities: { experimental: { 'claude/channel': {}, 'claude/channel/permission': {} } },
@@ -50,6 +50,16 @@ export function createLoomMcp(o: LoomMcpOpts): McpServer {
     { text: z.string().optional(), decision: z.string().optional(), symbols: z.array(sym).optional() });
   tool('why', 'Decision → task → agent → change → commit path for a symbol (or file.py:line).', { symbol: z.string() });
   tool('lessons', 'Lessons from earlier runs: about one symbol id (scope), else about what you are working on.', { scope: z.string().optional() });
+  server.registerTool('check_plan', { description: 'Check a team plan (.loom/plans/<slug>.md, a file path, or the plan text) before a team starts. '
+    + 'Returns ok, problems (which refuse a start) and warnings.', inputSchema: { slug: z.string().optional(), file: z.string().optional(), text: z.string().optional() } },
+  async (args: Record<string, unknown>): Promise<Result> => {
+    try {
+      const r = await fetch(`${o.url}/plans/check`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cwd: o.cwd, ...args }) });
+      const j = await r.json() as any;
+      if (!r.ok) return { isError: true, content: [{ type: 'text', text: j.error ?? `daemon returned ${r.status}` }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ ok: j.ok, problems: j.problems, warnings: j.warnings }) }] };
+    } catch (e) { return { isError: true, content: [{ type: 'text', text: `loom daemon unreachable at ${o.url}: ${String(e)}` }] }; }
+  });
   tool('claim_done', 'Claim a task done, with evidence (test command and result).', { task: z.string(), evidence: z.string().optional() });
   return server;
 }
