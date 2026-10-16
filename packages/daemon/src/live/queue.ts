@@ -6,7 +6,7 @@ import { diffRegions, regionize } from '@loom/indexer';
 import { contractBreaks, renderBreaks } from './contract.js';
 import { handover } from './handover.js';
 
-export interface LandResult { status: 'landed' | 'empty' | 'conflict' | 'tests_failed' | 'contract_break'; sha: string | null; regions: string[]; tail: string }
+export interface LandResult { status: 'landed' | 'empty' | 'conflict' | 'tests_failed' | 'contract_break'; sha: string | null; regions: string[]; tail: string; missing?: boolean }
 export interface LandJob { repo: string; wt: string; landed: string; agent: string; title: string; testCmd: string | null; g: LoomGraph }
 
 const ID = ['-c', 'user.email=loom@local', '-c', 'user.name=loom'];
@@ -56,7 +56,8 @@ export async function landOne(j: LandJob): Promise<LandResult> {
   const regions = await changedRegions(j.wt, old, 'HEAD');
   // a call another agent's work no longer fits never lands, whichever side moved (live coordination D)
   const breaks = await contractBreaks(j.wt, old, 'HEAD');
-  if (breaks.length) return { status: 'contract_break', sha: null, regions, tail: renderBreaks(breaks) };
+  // missing: every break is a callee that is not in the landed code at all, which only someone else's landing can supply
+  if (breaks.length) return { status: 'contract_break', sha: null, regions, tail: renderBreaks(breaks), missing: breaks.every((b) => b.missing) };
   const cmd = await coveringTests(j.g, regions, j.testCmd);
   if (cmd) {
     const t = spawnSync('sh', ['-c', cmd], { cwd: j.wt, encoding: 'utf8', maxBuffer: 1 << 28, timeout: 900_000 });

@@ -74,19 +74,37 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
     queue.push(async () => { try { await finish(w, await claude(w, prompt, resume)); } finally { w.running = false; } });
   };
 
+  /** Workers whose work calls something no one has landed yet, with that break: they wait for another agent's landing. */
+  const parked = new Map<Worker, string>();
+  const reland = (w: Worker) => {
+    w.running = true;
+    queue.push(async () => { try { await finish(w, w.rep.exit); } finally { w.running = false; } });
+  };
+
   /** The worker stopped: land its work. Work that cannot land goes back to it, on the landed code, with the reason. */
   const finish = async (w: Worker, code: number) => {
     w.rep.exit = code;
-    const r: { status: Status; sha: string | null; tail: string } = await post(url, '/admin/v2/land', { run, agent: w.t.id });
+    const r: { status: Status; sha: string | null; tail: string; missing?: boolean } = await post(url, '/admin/v2/land', { run, agent: w.t.id });
     w.status = r.status; w.tail = r.tail; w.rep.lands!.push(r.status);   // every landing attempt's outcome, in order
-    if (r.status === 'landed') { w.rep.commit = r.sha!; return; }
+    if (r.status === 'landed') {
+      w.rep.commit = r.sha!;
+      for (const p of [...parked.keys()]) { parked.delete(p); if (!p.running) reland(p); }   // what they call may be here now
+      return;
+    }
     if (r.status === 'empty') return;
+    // only another agent's landing can supply a callee that is missing: wait for one instead of resuming the agent to no end
+    // (x1 loom r0: c was resumed three times on a checkout that had nothing new, and its work never landed)
+    if (r.status === 'contract_break' && r.missing && [...workers.values()].some((x) => x !== w && x.running)) { parked.set(w, r.tail); return; }
+    await resume(w, r.status, r.tail);
+  };
+
+  const resume = async (w: Worker, status: Status, tail: string) => {
     if (w.rep.resumed >= MAX_RESUMES || !w.rep.sessionId) return;
     const h = await handover(w.wt, landed);
-    const why = r.status === 'tests_failed'
-      ? `[loom] your work did not land: the tests failed after merging it with the landed work. Fix it so the tests pass. Output:\n${r.tail}`
-      : r.status === 'contract_break'
-        ? `[loom] your work did not land: merged with the landed work, some ${r.tail}\nThe landed work is in your checkout now. Fix every listed call site (or the signature) so they fit, then finish.`
+    const why = status === 'tests_failed'
+      ? `[loom] your work did not land: the tests failed after merging it with the landed work. Fix it so the tests pass. Output:\n${tail}`
+      : status === 'contract_break'
+        ? `[loom] your work did not land: merged with the landed work, some ${tail}\nThe landed work is in your checkout now. Fix every listed call site (or the signature) so they fit, then finish.`
         : `[loom] your work did not land: it conflicts with work another agent landed.`;
     const files = h.status === 'conflict' ? `\nThe landed work is merged into your checkout; resolve the conflict markers in ${h.files.join(', ')}, keeping both changes' intent.` : '';
     w.rep.resumed++;
@@ -102,7 +120,7 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
       await (await fetch(`${url}/runs/${encodeURIComponent(run)}/notices`)).json().catch(() => []);
     for (const n of ns) {
       const w = workers.get(n.agent);
-      if (n.kind !== 'wake' || n.status !== 'pending' || handled.has(n.id) || !w || w.running || w.rep.resumed >= MAX_RESUMES || !w.rep.sessionId) continue;
+      if (n.kind !== 'wake' || n.status !== 'pending' || handled.has(n.id) || !w || w.running || parked.has(w) || w.rep.resumed >= MAX_RESUMES || !w.rep.sessionId) continue;
       handled.add(n.id);
       w.running = true;   // claimed before the awaits below, so a second poll cannot resume it twice
       const { text } = await post(url, '/admin/v2/take', { run, agent: w.t.id });
@@ -123,6 +141,10 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
         job().catch((e) => console.error(`[loom] worker failed: ${String(e)}`))
           .then(() => checkWakes().catch(() => {}))
           .finally(() => { active--; pump(); });
+      }
+      if (!active && !queue.length && parked.size) {   // no one left to land what they wait on: they get the reason after all
+        for (const [p, tail] of parked) { parked.delete(p); p.running = true; queue.push(async () => { p.running = false; await resume(p, 'contract_break', tail); }); }
+        return pump();
       }
       if (!active && !queue.length) { over = true; clearInterval(timer); allDone(); }
     };

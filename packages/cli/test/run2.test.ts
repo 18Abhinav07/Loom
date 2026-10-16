@@ -102,3 +102,34 @@ test('t1 shape: b adds a caller of f while a makes f\'s keyword required; the te
   expect(merged(r, rep)).toContain('return f(y, strict=False)');
   expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
 });
+
+test('x1 r0 shape: c lands a call to k before b has landed k; c is parked, not resumed, and lands when b does', async () => {
+  const r = repo();
+  const N = 'pkg/n.py';
+  writeFileSync(join(r, N), 'from pkg.m import f\n\n\ndef v():\n    return f(1)\n');
+  git(r, 'add', N); git(r, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'n');
+  const rep = await go(r, { test: `python3 -c "import pkg.m"`, tasks: [
+    task('b', 'g', { sleep: 1500, edit: [M, 'def g():', 'def k(z):\n    return z\n\n\ndef g():'] }),
+    { ...task('c', 'v', { edits: [[N, 'import f\n', 'import f, k\n'], [N, 'return f(1)', 'return f(1) + k(2)']] }), scope: [`${N}::v`] }] });
+  expect(worker(rep, 'c')).toMatchObject({ exit: 0, resumed: 0, lands: ['contract_break', 'landed'] });
+  expect(worker(rep, 'b')).toMatchObject({ lands: ['landed'] });
+  expect(merged(r, rep)).toContain('def k(z):');
+  expect(readFileSync(join(r, '.loom/wt', rep.run.replace(/[^\w-]/g, '').slice(-8), '_merge', N), 'utf8')).toContain('k(2)');
+  expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
+});
+
+test('a parked worker whose callee never lands is resumed with the reason once no one else is running, and the run ends', async () => {
+  const r = repo();
+  const N = 'pkg/n.py';
+  writeFileSync(join(r, N), 'from pkg.m import f\n\n\ndef v():\n    return f(1)\n');
+  git(r, 'add', N); git(r, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'n');
+  const fix = { edits: [[N, 'import f, k\n', 'import f\n'], [N, 'return f(1) + k(2)', 'return f(1) + 2']] };
+  const rep = await go(r, { test: `python3 -c "import pkg.m"`, tasks: [
+    task('b', 'g', { sleep: 1500 }),   // b finishes with nothing to land: no landing will ever bring k
+    { ...task('c', 'v', { edits: [[N, 'import f\n', 'import f, k\n'], [N, 'return f(1)', 'return f(1) + k(2)']], resumes: [fix] }), scope: [`${N}::v`] }] });
+  expect(worker(rep, 'b')).toMatchObject({ lands: ['empty'] });
+  expect(worker(rep, 'c')).toMatchObject({ resumed: 1, lands: ['contract_break', 'landed'] });
+  const args = readFileSync(join(log, 'c.args'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  expect(args.at(-1).join(' ')).toMatch(/k does not exist in the merged code/);
+  expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
+});

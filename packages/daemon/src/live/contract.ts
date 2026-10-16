@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import type { CallRec, FileIndex, SymbolRec } from '@loom/core';
 import { callSatisfies, indexPython } from '@loom/indexer';
 
-export interface Break { file: string; line: number; caller: string; callee: string; why: string }
+export interface Break { file: string; line: number; caller: string; callee: string; why: string; missing?: boolean }   // missing: the callee is not there (yet)
 
 const git = (cwd: string, ...a: string[]) => spawnSync('git', a, { cwd, encoding: 'utf8', maxBuffer: 1 << 28 });
 const PY = /\.py$/;
@@ -69,7 +69,7 @@ export async function contractBreaks(wt: string, from: string, to: string): Prom
     }
     const caller = c.from.split('::')[1];
     const callee = c.callee;
-    if (known && !target) out.set(key, { file, line: c.line, caller, callee, why: `${callee} does not exist in the merged code` });
+    if (known && !target) out.set(key, { file, line: c.line, caller, callee, why: `${callee} does not exist in the merged code`, missing: true });
     else if (target?.kind === 'class' || !target) continue;
     else if (callSatisfies(c, target.params) === false && !expectsTypeError((await at(to, file))!.source, c.line)) out.set(key, { file, line: c.line, caller, callee, why: `called with ${shape(c)}; the merged signature is ${target.sig}` });
   }
