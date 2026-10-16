@@ -38,3 +38,12 @@ landing outcomes `lands`). Run behaviour is unchanged, but the rule above says c
   `contract_break` and the landed branch never contains a call that does not fit `slugify`'s merged signature (c's oracle may
   fail; that is c's injected fault). Blind is run beside it to show what the same agents merge without the check.
   1 rep per arm, 3 if the first loom rep does not show a `contract_break` (reported either way).
+
+## Addendum 2 (2026-10-16, before the reruns below)
+The runs in `20261016-114037` (t1 + x1 r0) and `20261016-113848` (f1) were made on the build before two Loom fixes, each
+found by those real-agent runs and covered by a test that failed first:
+- 04847e3: the contract check did not see a function handed to `map`/`filter`/`key=` (t1 loom r2 landed `[*map(slugify, head)]`
+  after `strict` became required).
+- 5a6cb6e: a worker whose landing only missed a callee another agent had not landed yet was resumed to no end (x1 loom r0).
+Loom changed, so by the rule above all of those runs are **discarded** (kept on disk, reported as pre-fix evidence, not counted).
+Counted now: t1_slugpath and x1_textlist, 3 reps per arm, plus f1_oldcall under its own pass condition, all on this build.
