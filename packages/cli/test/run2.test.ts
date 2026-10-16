@@ -148,3 +148,23 @@ test('a worker that hits the usage limit is paused, not landed or resumed', asyn
   expect(worker(rep, 'a')).toMatchObject({ paused: 'usage limit', resumed: 0, lands: [] });
   expect(exitCode(rep)).toBe(1);
 });
+
+test('B2: the test command comes from .loom/config.json testCmd when the plan has none', async () => {
+  const r = repo();
+  mkdirSync(join(r, '.loom'), { recursive: true });
+  writeFileSync(join(r, '.loom/config.json'), JSON.stringify({ testCmd: `python3 -c "import pkg.m"` }));
+  const rep = await go(r, { tasks: [task('a', 'f', { edit: [M, '    return x\n', '    return x + 0\n'] })] });
+  expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
+});
+
+test('B2: work that adds a compile error does not land; the agent is resumed with the new errors and lands its fix', async () => {
+  const r = repo();
+  const fix = { edit: [M, '    return x  # BROKEN\n', '    return x\n'] };
+  const compile = `if grep -q BROKEN ${M}; then echo "${M}:2:5: error: BROKEN is not defined"; exit 1; fi`;
+  const rep = await go(r, { compile, tasks: [task('a', 'f', { edit: [M, '    return x\n', '    return x  # BROKEN\n'], resumes: [fix] })] });
+  const args = readFileSync(join(log, 'a.args'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  expect(args.at(-1).join(' ')).toContain('BROKEN is not defined');
+  expect(args.at(-1).join(' ')).toContain('compiler');
+  expect(worker(rep, 'a')).toMatchObject({ exit: 0, resumed: 1, lands: ['compile_failed', 'landed'] });
+  expect(merged(r, rep)).not.toContain('BROKEN');
+});

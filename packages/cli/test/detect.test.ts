@@ -19,7 +19,7 @@ describe('detect', () => {
   it('finds the compiler', () => {
     expect(detectCompile(dir({ 'tsconfig.json': '{}' }), { ts: 3 })).toBe('npx tsc --noEmit -p .');
     expect(detectCompile(dir({ 'tsconfig.json': '{}' }), { python: 3 })).toBeNull();
-    expect(detectCompile(dir({ 'go.mod': 'module m' }), { go: 1 })).toBe('go vet ./...');
+    expect(detectCompile(dir({ 'go.mod': 'module m' }), { go: 1 })).toBe('go build ./...');
     expect(detectCompile(dir({ 'Cargo.toml': '' }), { rust: 1 })).toBe('cargo check -q');
     expect(detectCompile(dir({ 'pom.xml': '' }), { java: 1 })).toBe('mvn -q compile');
     expect(detectCompile(dir({ 'build.gradle.kts': '' }), { java: 1 })).toBe('gradle -q compileJava');

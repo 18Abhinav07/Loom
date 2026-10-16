@@ -3,11 +3,12 @@
 import { spawnSync } from 'node:child_process';
 import type { LoomGraph } from '@loom/core';
 import { diffRegions, regionize } from '@loom/indexer';
+import { baseErrors, compileErrors, newErrors } from './compile.js';
 import { contractBreaks, renderBreaks } from './contract.js';
 import { handover } from './handover.js';
 
-export interface LandResult { status: 'landed' | 'empty' | 'conflict' | 'tests_failed' | 'contract_break'; sha: string | null; regions: string[]; tail: string; missing?: boolean }
-export interface LandJob { repo: string; wt: string; landed: string; agent: string; title: string; testCmd: string | null; g: LoomGraph }
+export interface LandResult { status: 'landed' | 'empty' | 'conflict' | 'tests_failed' | 'compile_failed' | 'contract_break'; sha: string | null; regions: string[]; tail: string; missing?: boolean }
+export interface LandJob { repo: string; wt: string; landed: string; agent: string; title: string; testCmd: string | null; compileCmd?: string | null; g: LoomGraph }
 
 const ID = ['-c', 'user.email=loom@local', '-c', 'user.name=loom'];
 const git = (cwd: string, ...a: string[]) => spawnSync('git', [...ID, ...a], { cwd, encoding: 'utf8', maxBuffer: 1 << 28 });
@@ -39,7 +40,7 @@ export async function coveringTests(g: LoomGraph, regions: string[], testCmd: st
   return files.length ? `${testCmd} ${files.join(' ')}` : testCmd;
 }
 
-/** Commit the agent's work, merge landed into it, run the covering tests, then move landed to it only if landed did not move meanwhile. */
+/** Commit the agent's work, merge landed into it, run the covering tests and the compiler, then move landed to it only if landed did not move meanwhile. */
 export async function landOne(j: LandJob): Promise<LandResult> {
   if (git(j.wt, 'status', '--porcelain', '--', '.', ...KEEP_OUT).stdout.trim()) {
     git(j.wt, 'add', '-A', '--', '.', ...KEEP_OUT);
@@ -62,6 +63,10 @@ export async function landOne(j: LandJob): Promise<LandResult> {
   if (cmd) {
     const t = spawnSync('sh', ['-c', cmd], { cwd: j.wt, encoding: 'utf8', maxBuffer: 1 << 28, timeout: 900_000 });
     if (t.status !== 0) return { status: 'tests_failed', sha: null, regions, tail: tail(`${t.stdout}\n${t.stderr}`) };
+  }
+  if (j.compileCmd) {   // typed languages: the compiler must not report anything the landed base did not
+    const fresh = newErrors(baseErrors(j.compileCmd, j.repo, old), compileErrors(j.compileCmd, j.wt).errors);
+    if (fresh.length) return { status: 'compile_failed', sha: null, regions, tail: tail(`new compile errors:\n${fresh.join('\n')}`) };
   }
   const sha = git(j.wt, 'rev-parse', 'HEAD').stdout.trim();
   const u = git(j.repo, 'update-ref', `refs/heads/${j.landed}`, sha, old);

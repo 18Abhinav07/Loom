@@ -204,7 +204,7 @@ export async function runPlan(o: RunOpts): Promise<RunReport> {
       break;
     }
   }
-  const testCmd: string | undefined = o.plan.test ?? cfg.test?.command;
+  const testCmd: string | undefined = o.plan.test ?? cfg.testCmd ?? undefined;
   let testsPassed: boolean | null = null; let testOutputTail = '';
   if (!conflict && testCmd) {
     const r = spawnSync('sh', ['-c', testCmd], { cwd: mwt, encoding: 'utf8', env });

@@ -10,7 +10,7 @@ import type { PlanTask } from '@loom/planner';
 import { exclude, mergeHooks, pyDirs } from './loom.js';
 import { allowedTools, MAX_RESUMES, spawnClaude, SUFFIX, type RunOpts, type RunReport, type WorkerReport } from './run.js';
 
-type Status = 'landed' | 'empty' | 'conflict' | 'tests_failed' | 'contract_break';
+type Status = 'landed' | 'empty' | 'conflict' | 'tests_failed' | 'compile_failed' | 'contract_break';
 interface Worker { t: PlanTask; wt: string; branch: string; rep: WorkerReport; running: boolean; status: Status | null; tail: string }
 
 /** Computed at call time: run.ts and this module import each other through loom.ts. */
@@ -43,14 +43,15 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
   const base = git(repo, 'rev-parse', o.plan.base ?? 'HEAD');
   const cfgPath = join(repo, '.loom', 'config.json');
   const cfg = existsSync(cfgPath) ? JSON.parse(readFileSync(cfgPath, 'utf8')) : {};
-  const testCmd: string | null = o.plan.test ?? cfg.test?.command ?? null;
+  const testCmd: string | null = o.plan.test ?? cfg.testCmd ?? null;
+  const compileCmd: string | null = o.plan.compile ?? cfg.compile ?? null;
   const runDir = join(repo, '.loom', 'runs', run.replace(/[^\w.-]+/g, '_'));
   mkdirSync(runDir, { recursive: true });
   exclude(repo, ['.loom/']);
 
   const landed = `loom/${run8}/landed`;
   git(repo, 'branch', landed, base);
-  await post(url, '/admin/v2/runs', { run, repo, landed, dirs: cfg.dirs ?? pyDirs(repo), test: testCmd });
+  await post(url, '/admin/v2/runs', { run, repo, landed, dirs: cfg.dirs ?? pyDirs(repo), test: testCmd, compile: compileCmd });
 
   const workers = new Map<string, Worker>();
   for (const t of o.plan.tasks) {
@@ -65,7 +66,7 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
 
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const k of Object.keys(env)) if (k.startsWith('ANTHROPIC_')) delete env[k];   // the subscription login, never a paid key
-  const tools = allowedTools({ test: testCmd, compile: o.plan.compile ?? cfg.compile ?? null });
+  const tools = allowedTools({ test: testCmd, compile: compileCmd });
   const claude = (w: Worker, prompt: string, resume?: string) => spawnClaude({ id: w.t.id, wt: w.wt, prompt, resume, rep: w.rep, runDir,
     model: o.model, claudeBin: o.claudeBin, tools, env: { ...env, LOOM_RUN: run, LOOM_AGENT: w.t.id, LOOM_URL: url } });
 
@@ -105,6 +106,8 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
     const h = await handover(w.wt, landed);
     const why = status === 'tests_failed'
       ? `[loom] your work did not land: the tests failed after merging it with the landed work. Fix it so the tests pass. Output:\n${tail}`
+      : status === 'compile_failed'
+        ? `[loom] your work did not land: merged with the landed work, the compiler (${compileCmd}) reports errors the landed code did not have. Fix them, then finish.\n${tail}`
       : status === 'contract_break'
         ? `[loom] your work did not land: merged with the landed work, some ${tail}\nThe landed work is in your checkout now. Fix every listed call site (or the signature) so they fit, then finish.`
         : `[loom] your work did not land: it conflicts with work another agent landed.`;
@@ -157,7 +160,7 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
   // The run's result is the landed branch; work that never landed is reported, not merged in.
   const mwt = join(repo, '.loom', 'wt', run8, '_merge');
   git(repo, 'worktree', 'add', '-q', '--detach', mwt, landed);
-  const lost = [...workers.values()].filter((w) => w.status === 'conflict' || w.status === 'tests_failed' || w.status === 'contract_break');
+  const lost = [...workers.values()].filter((w) => w.status === 'conflict' || w.status === 'tests_failed' || w.status === 'compile_failed' || w.status === 'contract_break');
   const conflict = lost.length ? lost.map((w) => `${w.branch}: not landed (${w.status})`).join('; ') : null;
   let testsPassed: boolean | null = null; let testOutputTail = '';
   if (testCmd) {
