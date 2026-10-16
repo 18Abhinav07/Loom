@@ -80,3 +80,18 @@ def test_archive_keeps_transcripts_and_branch_diffs_then_drops_the_clone(tmp_pat
     assert (tmp_path / "out" / "transcripts" / "t1__loom" / "a.jsonl").read_text() == '{"type":"result"}\n'
     assert "+x = 2" in (tmp_path / "out" / "diffs" / "t1__loom" / "loom_abcd1234_landed.diff").read_text()
     assert not repo.exists()
+
+
+def test_transcript_stats_counts_loom_denials_and_handovers_in_real_transcript_lines(tmp_path: Path):
+    # content copied from a real x1 transcript: Claude Code prefixes the hook's deny reason with "<Event>:<Tool> hook error: "
+    from e5.run import _transcript_stats
+    import json
+    deny = {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "is_error": True, "tool_use_id": "t1",
+            "content": "PreToolUse:Edit hook error: [loom] edit blocked before it happened:\n  LogEntry.get_change_message is leased by agent c (write, task c), held 11s"}]}}
+    hand = {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "is_error": True, "tool_use_id": "t2",
+            "content": "PreToolUse:Edit hook error: [loom] get_text_list changed on loom/x/landed by a (task a); your file now contains it, re-read get_text_list."}]}}
+    plain = {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t3", "content": "the word leased by itself"}]}}
+    f = tmp_path / "a.jsonl"
+    f.write_text("\n".join(json.dumps(x) for x in (deny, deny, hand, plain)) + "\n")
+    s = _transcript_stats(f)
+    assert s["denied"] == 2 and s["handovers"] == 1

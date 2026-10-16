@@ -90,7 +90,7 @@ def _get(path: str):
 
 
 def _transcript_stats(f: Path) -> dict:
-    cost, turns, denied, limit = 0.0, 0, 0, False
+    cost, turns, denied, handovers, limit = 0.0, 0, 0, 0, False
     if f.exists():
         for line in f.read_text().splitlines():
             try:
@@ -101,9 +101,12 @@ def _transcript_stats(f: Path) -> dict:
                 cost += m.get("total_cost_usd") or 0
                 turns += m.get("num_turns") or 0
                 limit = limit or "limit" in str(m.get("result", "")).lower() and bool(m.get("is_error"))
-            if "leased by" in line and '"deny"' in line:
-                denied += 1
-    return {"cost_usd": round(cost, 4), "turns": turns, "denied": denied, "limit": limit}
+            content = (m.get("message") or {}).get("content") if isinstance(m.get("message"), dict) else None
+            for c in content if isinstance(content, list) else []:   # what the agent saw back from a tool call Loom gated
+                t = str(c.get("content", "")) if c.get("type") == "tool_result" else ""
+                denied += "[loom] edit blocked" in t
+                handovers += "[loom]" in t and "your file now contains it" in t
+    return {"cost_usd": round(cost, 4), "turns": turns, "denied": denied, "handovers": handovers, "limit": limit}
 
 
 def agent_env(base) -> dict:
@@ -141,10 +144,10 @@ def run_cond(sc: Scenario, cond: str, out: Path, model: str, keep: bool = False,
     wall = round(time.time() - t0, 1)
     (out / "logs").mkdir(exist_ok=True)
     (out / "logs" / f"{tag}.cli.txt").write_text(p.stdout + p.stderr)
-    rep = json.loads(rep_f.read_text())
-    r = {**grade(sc, cond, repo, rep, wall), "rep": rep}
+    report = json.loads(rep_f.read_text())
+    r = {**grade(sc, cond, repo, report, wall), "rep": rep}
     if not keep:
-        archive(repo, rep["run"], sc.base, out, tag)
+        archive(repo, report["run"], sc.base, out, tag)
     return r
 
 
