@@ -11,7 +11,7 @@ export interface RunOpts {
   /** The no-Loom baseline: same worktrees, prompts, parallel launch and merge; no hooks, MCP, leases, wakes or daemon calls. */
   blind?: boolean;
 }
-export interface WorkerReport { agent: string; task: string; exit: number; sessionId?: string; resumed: number; commit?: string }
+export interface WorkerReport { agent: string; task: string; exit: number; sessionId?: string; resumed: number; commit?: string; lands?: string[] }
 export interface RunReport {
   run: string; workers: WorkerReport[];
   merge: { branch: string; conflict: string | null; testsPassed: boolean | null; testOutputTail: string };

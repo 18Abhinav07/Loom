@@ -60,7 +60,7 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
     writeFileSync(join(wt, '.loom-mcp.json'), JSON.stringify({ mcpServers: { loom: { command: 'node', args: [o.mcpPath],
       env: { LOOM_URL: url, LOOM_RUN: run, LOOM_AGENT: t.id } } } }, null, 2));
     await post(url, '/admin/v2/agents', { run, agent: t.id, worktree: wt, task: t.id, title: t.title, scope: t.scope ?? [] });
-    workers.set(t.id, { t, wt, branch, running: false, status: null, tail: '', rep: { agent: t.id, task: t.id, exit: -1, resumed: 0 } });
+    workers.set(t.id, { t, wt, branch, running: false, status: null, tail: '', rep: { agent: t.id, task: t.id, exit: -1, resumed: 0, lands: [] } });
   }
 
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -78,7 +78,7 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
   const finish = async (w: Worker, code: number) => {
     w.rep.exit = code;
     const r: { status: Status; sha: string | null; tail: string } = await post(url, '/admin/v2/land', { run, agent: w.t.id });
-    w.status = r.status; w.tail = r.tail;
+    w.status = r.status; w.tail = r.tail; w.rep.lands!.push(r.status);   // every landing attempt's outcome, in order
     if (r.status === 'landed') { w.rep.commit = r.sha!; return; }
     if (r.status === 'empty') return;
     if (w.rep.resumed >= MAX_RESUMES || !w.rep.sessionId) return;

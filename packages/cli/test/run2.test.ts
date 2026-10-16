@@ -84,7 +84,7 @@ test('work that fails the landing tests does not land; the agent is resumed with
     task('a', 'f', { edit: [M, '    return x\n', '    return x + 1\n'], resumes: [fix] })] });
   const args = readFileSync(join(log, 'a.args'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   expect(args.at(-1).join(' ')).toContain('f-broke-2');
-  expect(worker(rep, 'a')).toMatchObject({ exit: 0, resumed: 1 });
+  expect(worker(rep, 'a')).toMatchObject({ exit: 0, resumed: 1, lands: ['tests_failed', 'landed'] });
   expect(merged(r, rep)).toContain('return x * 1');
   expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
 });
@@ -97,8 +97,8 @@ test('t1 shape: b adds a caller of f while a makes f\'s keyword required; the te
     task('b', 'h', { edit: [M, 'def h(y):', 'def u(y):\n    return f(y)\n\n\ndef h(y):'] })] });
   const args = readFileSync(join(log, 'a.args'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   expect(args.at(-1).join(' ')).toMatch(/pkg\/m\.py:\d+ u calls f/);
-  expect(worker(rep, 'a')).toMatchObject({ exit: 0, resumed: 1 });
-  expect(worker(rep, 'b')).toMatchObject({ exit: 0, resumed: 0 });
+  expect(worker(rep, 'a')).toMatchObject({ exit: 0, resumed: 1, lands: ['contract_break', 'landed'] });
+  expect(worker(rep, 'b')).toMatchObject({ exit: 0, resumed: 0, lands: ['landed'] });
   expect(merged(r, rep)).toContain('return f(y, strict=False)');
   expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
 });
