@@ -11,6 +11,7 @@ import { runPlan2 } from './run2.js';
 import { resolveAttach, resolveRepo } from '@loom/daemon';
 import { addLesson, DEFAULT_EXCLUDES, ensureLoomDir, finishSession, gitTry, graphName, importSessions, indexRepo, installGitHooks, lessonsFor,
   postCommit, preCommit, readActive, readConfig, reconcile, repoId, sync, type LoomConfig } from '@loom/memory';
+import { detectCompile, detectLangs, sourceDirs } from './detect.js';
 
 const DAEMON = process.env.LOOM_URL ?? 'http://127.0.0.1:4318';
 const UI = process.env.LOOM_UI ?? 'http://127.0.0.1:4317';
@@ -72,6 +73,8 @@ export function detectTestCmd(root: string): string | null {
   if (existsSync(join(root, 'pyproject.toml')) || existsSync(join(root, 'setup.cfg'))) return 'python -m pytest -q';
   const pj = join(root, 'package.json');
   try { if (existsSync(pj) && JSON.parse(readFileSync(pj, 'utf8')).scripts?.test) return 'npm test'; } catch { /* not JSON */ }
+  if (existsSync(join(root, 'go.mod'))) return 'go test ./...';
+  if (existsSync(join(root, 'Cargo.toml'))) return 'cargo test -q';
   return null;
 }
 
@@ -85,11 +88,13 @@ export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: stri
   const id = repoId(mainRoot);                                                    // throws on a repo with no commits
   const cfgPath = join(mainRoot, '.loom', 'config.json');
   const hadLock = existsSync(join(mainRoot, '.loom', 'regions.lock'));
-  const dirs = pyDirs(mainRoot);
-  const fresh = { repoId: id, dirs: dirs.length ? dirs : ['.'], excludes: DEFAULT_EXCLUDES, testCmd: o.testCmd ?? detectTestCmd(mainRoot), share: true,
-    run: `coord:local:${basename(mainRoot)}`, daemon: DAEMON };                   // v1 run-mode keys stay until P3
-  const v1 = readConfig(mainRoot) as (LoomConfig & Record<string, unknown>) | null;
-  if (v1 && !v1.repoId) writeFileSync(cfgPath, JSON.stringify({ ...fresh, ...v1, repoId: id }, null, 2) + '\n');   // upgrade a v1 config in place
+  const tracked = git(mainRoot, 'ls-files').split('\n').filter(Boolean);
+  const langs = detectLangs(tracked);
+  const fresh = { v: 2, repoId: id, dirs: sourceDirs(mainRoot, tracked), excludes: DEFAULT_EXCLUDES, testCmd: o.testCmd ?? detectTestCmd(mainRoot),
+    compile: detectCompile(mainRoot, langs), langs, share: true, run: `coord:local:${basename(mainRoot)}`, daemon: DAEMON };
+  const old = readConfig(mainRoot) as (LoomConfig & Record<string, unknown>) | null;
+  if (old && old.v !== 2)   // upgrade an older config in place: its keys win, the new ones are added
+    writeFileSync(cfgPath, JSON.stringify({ ...fresh, ...old, repoId: old.repoId ?? id, v: 2, langs, compile: old.compile ?? fresh.compile }, null, 2) + '\n');
   const cfg = ensureLoomDir(mainRoot, fresh as LoomConfig);
   exclude(mainRoot, ['.claude/settings.local.json', '.mcp.json']);              // .loom/ is not excluded: its records travel through git
   const db = o.db ?? await LoomDb.connect();
