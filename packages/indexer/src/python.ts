@@ -163,7 +163,8 @@ export async function indexPython(file: string, source: string): Promise<FileInd
   const local = new Set(symbols.filter((s) => s.kind !== 'method').map((s) => s.qname));
   for (const { sym, def, cls } of defs) {
     for (const call of def.descendantsOfType('call')) {
-      const fn = call.childForFieldName('function')!;
+      let fn = call.childForFieldName('function')!;
+      if (fn.type === 'list_splat' || fn.type === 'dictionary_splat') fn = fn.namedChildren[0];   // `[*g(1)]` parses as call(*g)
       if (fn.type !== 'identifier' && fn.type !== 'attribute') continue;
       const args = call.childForFieldName('arguments');
       const named = args?.type === 'argument_list' ? args.namedChildren.filter((a) => a.type !== 'comment') : [];
@@ -175,6 +176,22 @@ export async function indexPython(file: string, source: string): Promise<FileInd
         dstar: named.some((a) => a.type === 'dictionary_splat'),
         method: fn.type === 'attribute',
       });
+      // a function handed to a builtin that calls it is called too: map(f, a, b) calls f with 2 positionals, filter(f, a) and
+      // sorted/min/max/.sort(key=f) with 1 (t1 loom r2 landed `map(slugify, head)` after slugify's `strict` became required)
+      if (args?.type !== 'argument_list') continue;
+      const pos = named.filter((a) => !['keyword_argument', 'list_splat', 'dictionary_splat'].includes(a.type));
+      const builtin = fn.type === 'identifier' && !local.has(fn.text) && !imps.names.has(fn.text) ? fn.text : null;
+      const refs: Array<[Node, number]> = [];
+      if (builtin === 'map' && pos.length >= 2 && !named.some((a) => a.type === 'list_splat')) refs.push([pos[0], pos.length - 1]);
+      if (builtin === 'filter' && pos.length === 2) refs.push([pos[0], 1]);
+      const key = named.find((a) => a.type === 'keyword_argument' && a.childForFieldName('name')!.text === 'key');
+      const sorter = builtin && ['sorted', 'min', 'max'].includes(builtin) || fn.type === 'attribute' && fn.childForFieldName('attribute')!.text === 'sort';
+      if (key && sorter) refs.push([key.childForFieldName('value')!, 1]);
+      for (const [ref, argc] of refs) {
+        if (ref.type !== 'identifier' && ref.type !== 'attribute') continue;
+        calls.push({ from: sym.id, callee: ref.text, to: resolve(ref, file, imps, local, cls), line: ref.startPosition.row + 1,
+          argc, kwargs: [], star: false, dstar: false, method: ref.type === 'attribute' });
+      }
     }
   }
   tree.delete();

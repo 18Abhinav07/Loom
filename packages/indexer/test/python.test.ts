@@ -74,3 +74,9 @@ test('mutants: one per operator inside the symbol, each still parses with the sy
   expect(out.arg).toContain('sorted(xs)');
   for (const m of ms) expect((await indexPython('m.py', applyMutant(src, m))).symbols.map((s) => s.name)).toContain('f');
 });
+
+test('a call inside [*...] is a call (the grammar parses `[*g(1)]` as a call whose function is `*g`), and map/filter/key= call what they are handed', async () => {
+  const idx = await indexPython('b.py', 'from a import f, g\n\n\ndef w(xs):\n    return [*g(1)] + [*map(f, xs, xs)] + sorted(xs, key=f)\n');
+  const shape = (c: { callee: string; argc: number }) => `${c.callee}/${c.argc}`;
+  expect(idx.calls.map(shape).sort()).toEqual(['f/1', 'f/2', 'g/1', 'map/3', 'sorted/1']);
+});

@@ -74,3 +74,20 @@ test('a test that calls with the wrong arguments on purpose, inside raises(TypeE
   expect(res.status).toBe('contract_break');                                             // ValueError is not what a bad call raises
   expect(res.tail.match(/test_extra calls f/g)).toHaveLength(2);
 });
+
+test('a function passed to map/filter/key= is called by them: a reference that no longer fits is a contract_break (t1 loom r2)', async () => {
+  const { r, x, y } = repo();
+  put(x, 'pkg/a.py', A_PY.replace('def f(x):', 'def f(x, *, strict):').replace('f(1)', 'f(1, strict=False)'));
+  expect((await land(r, x, 'x')).status).toBe('landed');
+  put(y, 'pkg/b.py', 'from pkg.a import f\n\n\ndef w(xs):\n    return "/".join([*map(f, xs)])\n\n\ndef k(xs):\n    return sorted(xs, key=f)\n');
+  const res = await land(r, y, 'y');
+  expect(res.status).toBe('contract_break');
+  expect(res.tail).toMatch(/pkg\/b\.py:\d+ w calls f/);
+  expect(res.tail).toMatch(/pkg\/b\.py:\d+ k calls f/);
+});
+
+test('no false alarm: map/filter/key= with a function that fits, or two iterables for a two-argument function, lands', async () => {
+  const { r, y } = repo({ 'pkg/a.py': A_PY + '\n\ndef two(a, b):\n    return a\n' });
+  put(y, 'pkg/b.py', 'from pkg.a import f, two\n\n\ndef w(xs):\n    return list(map(f, xs)) + list(filter(f, xs)) + sorted(xs, key=f) + list(map(two, xs, xs))\n');
+  expect((await land(r, y, 'y')).status).toBe('landed');
+});
