@@ -1,5 +1,5 @@
 // loom init | up | down | status | why | verify | lesson — attach a repo to Loom and run the daemon for plain `claude` sessions.
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -79,12 +79,51 @@ export function detectTestCmd(root: string): string | null {
 }
 
 /** §6.1: repoId, .loom/, regions + lock + baseline, git hooks, Claude hooks, then whatever sessions the clone already carries. */
-export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: string; loomCmd: string; tenant?: string; testCmd?: string; db?: LoomDb }) {
+export interface InitSummary { files: number; regions: Record<string, number>; degraded: number; sessions: number; people: number;
+  last: number | null; compile: string | null; test: string | null }
+const IDENT = (root: string) => (gitTry(root, 'config', 'user.email') ? [] : ['-c', 'user.name=Loom', '-c', 'user.email=loom@localhost']);
+/** The Loom files a teammate needs: config, lock, merge attributes and the session records. Run scratch never goes in. */
+function commitLoom(root: string): boolean {
+  const paths = ['.loom/config.json', '.loom/.gitattributes', '.loom/regions.lock'].filter((p) => existsSync(join(root, p)));
+  const sd = join(root, '.loom', 'sessions');
+  if (existsSync(sd)) paths.push(...readdirSync(sd).filter((f) => f.endsWith('.jsonl')).map((f) => `.loom/sessions/${f}`));
+  if (!paths.length) return false;
+  git(root, 'add', '--', ...paths);
+  if (spawnSync('git', ['diff', '--cached', '--quiet', '--', ...paths], { cwd: root }).status === 0) return false;
+  execFileSync('git', [...IDENT(root), 'commit', '-q', '-m', 'loom: init', '--', ...paths], { cwd: root, stdio: 'ignore' });
+  return true;
+}
+
+/** A [Y/n] question on the terminal; Enter means yes. */
+export async function askYes(q: string): Promise<boolean> {
+  const rl = (await import('node:readline/promises')).createInterface({ input: process.stdin, output: process.stdout });
+  try { return !/^n/i.test((await rl.question(q)).trim()); } finally { rl.close(); }
+}
+const STATE = { A: 'no commits yet: made a first commit, then set Loom up', B: 'set Loom up for the first time', C: 'Loom was already set up here: caught up and checked it' };
+export function printSummary(r: { state: 'A' | 'B' | 'C'; committed: boolean; summary: InitSummary; config: string; settings: string }): string {
+  const s = r.summary;
+  const regions = Object.entries(s.regions).sort((a, b) => b[1] - a[1]).map(([l, n]) => `${l} ${n}`).join(', ') || 'none';
+  return [`state ${r.state}: ${STATE[r.state]}`, `config  ${r.config}`, `hooks   ${r.settings}`,
+    `files ${s.files} · regions ${regions} · degraded ${s.degraded}`,
+    `sessions ${s.sessions} · people ${s.people} · last activity ${s.last ? new Date(s.last).toISOString() : 'none'}`,
+    `test ${s.test ?? 'none found'} · compile ${s.compile ?? 'none'}`, r.committed ? 'committed .loom/' : '.loom/ not committed'].join('\n');
+}
+
+export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: string; loomCmd: string; tenant?: string; testCmd?: string; db?: LoomDb;
+  /** Commit .loom/ when init is done. Undefined means no. */ commit?: boolean }) {
   const top = git(cwd, 'rev-parse', '--show-toplevel');
   const common = git(cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir');
   if (git(common, 'rev-parse', '--is-bare-repository') === 'true')
     throw new Error(`${common} is a bare repository: loom needs a normal clone (its checkout is the base it indexes)`);
   const mainRoot = dirname(common);
+  const hasHead = spawnSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: mainRoot }).status === 0;
+  const state: 'A' | 'B' | 'C' = !hasHead ? 'A' : existsSync(join(mainRoot, '.loom', 'config.json')) ? 'C' : 'B';
+  if (state === 'A') {   // no commits yet: the repo id is its first commit, so make one from what is here
+    const gi = join(mainRoot, '.gitignore');
+    if (!existsSync(gi)) writeFileSync(gi, 'node_modules/\n.venv/\n__pycache__/\n');
+    git(mainRoot, 'add', '-A');
+    execFileSync('git', [...IDENT(mainRoot), 'commit', '-q', '--allow-empty', '-m', 'loom: initial commit'], { cwd: mainRoot, stdio: 'ignore' });
+  }
   const id = repoId(mainRoot);                                                    // throws on a repo with no commits
   const cfgPath = join(mainRoot, '.loom', 'config.json');
   const hadLock = existsSync(join(mainRoot, '.loom', 'regions.lock'));
@@ -114,8 +153,15 @@ export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: stri
     if (hadLock) await reconcile(g, mainRoot, null, 'HEAD', 200);                // a clone of a Loom repo: catch up on what landed without us
     const [{ n: sessions }] = await g.query<{ n: number }>('MATCH (s:Session) RETURN count(s) AS n');
     const [{ n: people }] = await g.query<{ n: number }>('MATCH (p:Person) RETURN count(p) AS n');
-    const summary = `files: ${s.files} · regions: ${s.regions} · degraded: ${s.degraded.length} · unresolved calls: ${s.unresolved} · sessions: ${sessions} · people: ${people} · reparsed: ${s.reparsed}`;
-    return { mainRoot, config: cfgPath, settings: sp, summary };
+    const text = `files: ${s.files} · regions: ${s.regions} · degraded: ${s.degraded.length} · unresolved calls: ${s.unresolved} · sessions: ${sessions} · people: ${people} · reparsed: ${s.reparsed}`;
+    const byPath = await g.query<{ p: string; n: number }>('MATCH (r:Region) WHERE coalesce(r.tombstoned, false) = false RETURN r.path AS p, count(r) AS n');
+    const regions: Record<string, number> = {};
+    for (const { p, n } of byPath) for (const l of Object.keys(detectLangs([p]))) regions[l] = (regions[l] ?? 0) + n;
+    const [{ last }] = await g.query<{ last: number | null }>('MATCH (s:Session) RETURN max(s.started) AS last');
+    const summary: InitSummary = { files: s.files, regions, degraded: s.degraded.length, sessions, people, last: last ?? null,
+      compile: (cfg as LoomConfig).compile ?? null, test: cfg.testCmd ?? null };
+    const committed = o.commit === true && commitLoom(mainRoot);
+    return { mainRoot, config: cfgPath, settings: sp, state, committed, summary, text };
   } finally { if (!o.db) await db.close(); }
 }
 
@@ -181,12 +227,15 @@ export async function main(argv: string[]): Promise<number> {
       if (!ok) { console.error('FalkorDB did not come up in 30s'); return 1; }
     }
     let r: Awaited<ReturnType<typeof initRepo>>;
+    const tty = process.stdin.isTTY && process.stdout.isTTY;
+    const commit = rest.includes('--commit') ? true : rest.includes('--no-commit') || !tty ? false
+      : await askYes('Commit .loom/ now? It carries the regions lock and session records to teammates. [Y/n] ');
     try {
-      r = await initRepo(process.cwd(), { hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`,
+      r = await initRepo(process.cwd(), { hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`, commit,
         mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs'), loomCmd: `node ${join(loomRoot(), 'packages', 'cli', 'dist', 'loom.cjs')}` });
     } catch (e) { console.error(`loom init: ${(e as Error).message}`); return 1; }
-    console.log(`wrote ${r.config}\nhooks in ${r.settings}\n${r.summary}`);
-    console.log('next: commit .loom/ (it carries the regions lock and session records to teammates), then run `claude` in this directory (or any of its worktrees); `loom up` for the v1 run mode');
+    console.log(printSummary(r));
+    if (!r.committed) console.log('next: commit .loom/ (it carries the regions lock and session records to teammates)');
     return 0;
   }
   if (cmd === 'hook' && rest[0] === 'git') return gitHook(rest[1]);

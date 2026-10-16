@@ -13,10 +13,11 @@ const g = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.emai
 function repo() { const d = mkdtempSync(join(tmpdir(), 'loom-cli2-')); mkdirSync(join(d, 'pkg')); writeFileSync(join(d, 'pkg/a.py'), 'def f():\n    return 1\n');
   g(d, 'init', '-q', '-b', 'main'); g(d, 'add', '-A'); g(d, 'commit', '-qm', 'base'); return d; }
 
-test('init: refuses no commits; writes config with repoId; lock; baseline; git hooks; Claude hooks with Bash matcher; idempotent', async () => {
+test('init: a repo with no commits gets a first commit (B1 state A); writes config with repoId; lock; baseline; git hooks; Claude hooks with Bash matcher; idempotent', async () => {
   db = await LoomDb.connect();
   const empty = mkdtempSync(join(tmpdir(), 'loom-e2-')); g(empty, 'init', '-q');
-  await expect(initRepo(empty, { hookCmd: 'node /x/h.cjs', loomCmd: 'node /x/loom.cjs', db })).rejects.toThrow(/no commits/);
+  expect((await initRepo(empty, { hookCmd: 'node /x/h.cjs', loomCmd: 'node /x/loom.cjs', db })).state).toBe('A');   // spec §3.1 replaced the v1 refusal
+  await db.graph(graphName(tenant(), repoId(empty))).drop();
   const r = repo();
   const a = await initRepo(r, { hookCmd: 'node /x/h.cjs', loomCmd: 'node /x/loom.cjs', db });
   const b = await initRepo(r, { hookCmd: 'node /x/h.cjs', loomCmd: 'node /x/loom.cjs', db });
@@ -27,8 +28,8 @@ test('init: refuses no commits; writes config with repoId; lock; baseline; git h
   expect(s.hooks.PreToolUse[0].matcher).toBe('Edit|Write|MultiEdit|NotebookEdit|Bash');
   // UserPromptSubmit and Stop stay while the v1 run mode serves them (server.ts onHook); P3 decides
   expect(Object.keys(s.hooks).sort()).toEqual(['PostToolUse', 'PreToolUse', 'SessionEnd', 'SessionStart', 'Stop', 'UserPromptSubmit']);
-  expect(a.summary).toMatch(/files: 1 · regions: \d+ · degraded: 0 · unresolved calls: \d+ · sessions: 0 · people: 1/);
-  expect(b.summary).toMatch(/reparsed: 0/);
+  expect(a.text).toMatch(/files: 1 · regions: \d+ · degraded: 0 · unresolved calls: \d+ · sessions: 0 · people: 1/);
+  expect(b.text).toMatch(/reparsed: 0/);
   await db.graph(graphName(tenant(), repoId(r))).drop();
 });
 
