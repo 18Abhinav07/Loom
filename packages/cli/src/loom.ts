@@ -212,10 +212,16 @@ export async function main(argv: string[]): Promise<number> {
     console.error(`daemon did not answer in 10s; see ${join(HOME, 'daemon.log')}`); return 1;
   }
   if (cmd === 'down') {
+    // Kill whatever answers on the port (it reports its pid), not only the pid file: a lost or stale pid file left orphans running.
     const pf = join(HOME, 'daemon.pid');
-    if (!existsSync(pf)) { console.log('not running'); return 0; }
-    try { process.kill(Number(readFileSync(pf, 'utf8'))); } catch { /* already gone */ }
-    rmSync(pf); console.log('stopped'); return 0;
+    const live = await fetch(`${DAEMON}/health`, { signal: AbortSignal.timeout(1000) }).then((r) => r.json() as Promise<{ pid?: number }>).catch(() => null);
+    const pids = [live?.pid, existsSync(pf) ? Number(readFileSync(pf, 'utf8')) : undefined].filter((p): p is number => Boolean(p));
+    rmSync(pf, { force: true });
+    if (!pids.length) { console.log('not running'); return 0; }
+    for (const p of pids) { try { process.kill(p); } catch { /* already gone */ } }
+    for (let i = 0; i < 20 && await healthy(); i++) await sleep(250);
+    if (await healthy()) { console.error(`daemon on ${DAEMON} did not stop`); return 1; }
+    console.log('stopped'); return 0;
   }
   if (cmd === 'status') {
     const at = resolveAttach(process.cwd());

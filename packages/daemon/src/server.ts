@@ -156,7 +156,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     try {
       const u = new URL(req.url ?? '/', 'http://x');
       const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-      if (req.method === 'GET' && u.pathname === '/health') return send(200, { ok: true, runs: runs.size, readOnly: Boolean(opts.readOnly) });
+      if (req.method === 'GET' && u.pathname === '/health') return send(200, { ok: true, runs: runs.size, readOnly: Boolean(opts.readOnly), pid: process.pid });
       if (opts.readOnly && req.method !== 'GET' && u.pathname !== '/replay' && req.headers['x-loom-replay'] !== replayToken)
         return send(403, { error: 'read-only: only /replay is open' });
       if (u.pathname === '/replay') {   // loom replay <dir>: drive a recording into a fresh <tenant>:replay:<id> graph
