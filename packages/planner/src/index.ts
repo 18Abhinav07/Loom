@@ -5,7 +5,7 @@ import { parse } from 'yaml';
 import type { LoomGraph } from '@loom/core';
 
 export interface PlanTask { id: string; title: string; prompt: string; scope?: string[] }
-export interface Plan { repo?: string; base?: string; test?: string; tasks: PlanTask[] }
+export interface Plan { repo?: string; base?: string; test?: string; compile?: string; tasks: PlanTask[] }
 export interface Partition { components: string[][]; hubs: string[]; hubOwner: Record<string, string> }
 
 const ID = /^[a-z][\w-]*$/;

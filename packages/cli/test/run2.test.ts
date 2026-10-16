@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { LoomDb } from '@loom/core';
 import { startServer } from '../../daemon/src/server.js';
-import { exitCode, type RunReport } from '../src/run.js';
+import { exitCode, usageLimited, type RunReport } from '../src/run.js';
 import { runPlan2 } from '../src/run2.js';
 import type { Plan } from '@loom/planner';
 
@@ -132,4 +132,19 @@ test('a parked worker whose callee never lands is resumed with the reason once n
   const args = readFileSync(join(log, 'c.args'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   expect(args.at(-1).join(' ')).toMatch(/k does not exist in the merged code/);
   expect(rep.merge).toMatchObject({ conflict: null, testsPassed: true });
+});
+
+test('usageLimited: only error lines that say the limit was hit', () => {
+  expect(usageLimited('{"type":"result","is_error":true,"result":"Claude AI usage limit reached|1792200000"}')).toBe(true);
+  expect(usageLimited('{"type":"assistant","error":"rate_limit","message":{"content":[{"type":"text","text":"You\'ve hit your limit · resets 2:30am"}]}}')).toBe(true);
+  expect(usageLimited('{"type":"result","is_error":true,"result":"done"}')).toBe(false);
+  expect(usageLimited('{"type":"result","is_error":false,"result":"I added a usage limit check"}')).toBe(false);
+  expect(usageLimited('not json')).toBe(false);
+});
+
+test('a worker that hits the usage limit is paused, not landed or resumed', async () => {
+  const r = repo();
+  const rep = await go(r, { tasks: [task('a', 'f', { limit: true })] });
+  expect(worker(rep, 'a')).toMatchObject({ paused: 'usage limit', resumed: 0, lands: [] });
+  expect(exitCode(rep)).toBe(1);
 });

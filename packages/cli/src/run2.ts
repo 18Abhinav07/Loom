@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { handover } from '@loom/daemon';
 import type { PlanTask } from '@loom/planner';
 import { exclude, mergeHooks, pyDirs } from './loom.js';
-import { MAX_RESUMES, spawnClaude, SUFFIX, type RunOpts, type RunReport, type WorkerReport } from './run.js';
+import { allowedTools, MAX_RESUMES, spawnClaude, SUFFIX, type RunOpts, type RunReport, type WorkerReport } from './run.js';
 
 type Status = 'landed' | 'empty' | 'conflict' | 'tests_failed' | 'contract_break';
 interface Worker { t: PlanTask; wt: string; branch: string; rep: WorkerReport; running: boolean; status: Status | null; tail: string }
@@ -64,9 +64,10 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
   }
 
   const env: NodeJS.ProcessEnv = { ...process.env };
-  delete env.ANTHROPIC_API_KEY; delete env.ANTHROPIC_AUTH_TOKEN;   // the subscription login, never a paid key
+  for (const k of Object.keys(env)) if (k.startsWith('ANTHROPIC_')) delete env[k];   // the subscription login, never a paid key
+  const tools = allowedTools({ test: testCmd, compile: o.plan.compile ?? cfg.compile ?? null });
   const claude = (w: Worker, prompt: string, resume?: string) => spawnClaude({ id: w.t.id, wt: w.wt, prompt, resume, rep: w.rep, runDir,
-    model: o.model, claudeBin: o.claudeBin, env: { ...env, LOOM_RUN: run, LOOM_AGENT: w.t.id, LOOM_URL: url } });
+    model: o.model, claudeBin: o.claudeBin, tools, env: { ...env, LOOM_RUN: run, LOOM_AGENT: w.t.id, LOOM_URL: url } });
 
   const queue: (() => Promise<void>)[] = [];
   const launch = (w: Worker, prompt: string, resume?: string) => {
@@ -84,6 +85,7 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
   /** The worker stopped: land its work. Work that cannot land goes back to it, on the landed code, with the reason. */
   const finish = async (w: Worker, code: number) => {
     w.rep.exit = code;
+    if (w.rep.paused) return;   // out of usage: nothing to land, and resuming would hit the same limit
     const r: { status: Status; sha: string | null; tail: string; missing?: boolean } = await post(url, '/admin/v2/land', { run, agent: w.t.id });
     w.status = r.status; w.tail = r.tail; w.rep.lands!.push(r.status);   // every landing attempt's outcome, in order
     if (r.status === 'landed') {
@@ -120,7 +122,7 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
       await (await fetch(`${url}/runs/${encodeURIComponent(run)}/notices`)).json().catch(() => []);
     for (const n of ns) {
       const w = workers.get(n.agent);
-      if (n.kind !== 'wake' || n.status !== 'pending' || handled.has(n.id) || !w || w.running || parked.has(w) || w.rep.resumed >= MAX_RESUMES || !w.rep.sessionId) continue;
+      if (n.kind !== 'wake' || n.status !== 'pending' || handled.has(n.id) || !w || w.running || parked.has(w) || w.rep.resumed >= MAX_RESUMES || !w.rep.sessionId || w.rep.paused) continue;
       handled.add(n.id);
       w.running = true;   // claimed before the awaits below, so a second poll cannot resume it twice
       const { text } = await post(url, '/admin/v2/take', { run, agent: w.t.id });
