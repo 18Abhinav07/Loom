@@ -1,0 +1,28 @@
+# B2 proof — TS/Go landing gates (cb4e90c + working tree), 2026-10-16T15:47:30Z
+# go version go1.26.5 darwin/arm64; tsc Version 5.6.3
+
+$ npx vitest run --reporter=verbose packages/daemon/test/live/ts-locks.test.ts packages/daemon/test/live/compile.test.ts packages/indexer/test/regions/go.test.ts packages/cli/test/detect.test.ts
+ ✓ packages/indexer/test/regions/go.test.ts > go: one whole-file region, not degraded
+ ✓ packages/cli/test/detect.test.ts > detect > counts languages by extension
+ ✓ packages/cli/test/detect.test.ts > detect > finds the compiler
+ ✓ packages/cli/test/detect.test.ts > detect > finds source dirs across languages
+ ✓ packages/cli/test/detect.test.ts > detect > finds go and cargo test commands
+ ✓ packages/daemon/test/live/ts-locks.test.ts > TS: x edits f → allow; y edits f → deny naming x; y edits g → allow
+ ✓ packages/daemon/test/live/compile.test.ts > newErrors is head minus base, counting repeats
+ ✓ packages/daemon/test/live/compile.test.ts > compileErrors strips positions and keeps only error lines
+ ✓ packages/daemon/test/live/compile.test.ts > a change that adds a new undefined call → compile_failed naming it; landed does not move 375ms
+ ✓ packages/daemon/test/live/compile.test.ts > a change that adds no new error lands despite the base error 371ms
+ ✓ packages/daemon/test/live/compile.test.ts > TS: changing f(x: number) to f(x: string) breaks a caller in another file → compile_failed naming TS2345 1399ms
+ Test Files  4 passed (4)
+      Tests  11 passed (11)
+
+$ npx vitest run --reporter=verbose packages/cli/test/run2.test.ts -t B2
+ ✓ packages/cli/test/run2.test.ts > B2: the test command comes from .loom/config.json testCmd when the plan has none 825ms
+ ✓ packages/cli/test/run2.test.ts > B2: work that adds a compile error does not land; the agent is resumed with the new errors and lands its fix 1170ms
+      Tests  2 passed | 8 skipped (10)
+
+$ npx vitest run packages/indexer
+ Test Files  15 passed (15)
+      Tests  64 passed (64)
+$ git diff --exit-code bench/results/l-1.txt
+unchanged (exit 0)

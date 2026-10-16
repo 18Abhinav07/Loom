@@ -11,7 +11,7 @@ import { Live } from './live.js';
 import { landOne, MergeQueue, type LandResult } from './queue.js';
 import { upstreamOf } from './stale.js';
 
-export interface V2Run { id: string; g: LoomGraph; live: Live; repo: string; landed: string; test: string | null; queue: MergeQueue;
+export interface V2Run { id: string; g: LoomGraph; live: Live; repo: string; landed: string; test: string | null; compile: string | null; queue: MergeQueue;
   agents: Map<string, { worktree: string; task: string; title: string }> }
 interface Target { live: Live; g: LoomGraph; agent: string; root: string }
 
@@ -105,13 +105,13 @@ export class LiveRoutes {
   }
 
   /** R6.2: a v2 run gets its own graph, indexed from the repo at the landed branch's checkout (main worktree). */
-  async addRun(b: { run: string; repo: string; landed: string; dirs?: string[]; test?: string | null }) {
+  async addRun(b: { run: string; repo: string; landed: string; dirs?: string[]; test?: string | null; compile?: string | null }) {
     const g = this.db.graph(b.run);
     const dirs = [...(b.dirs?.length ? b.dirs : ['.'])];
     if (!dirs.includes('.') && existsSync(join(b.repo, 'tests')) && !dirs.includes('tests')) dirs.push('tests');
     const t0 = Date.now();
     const stats = await indexRepo(g, b.repo, { baseline: true, writeLock: false, cfg: { repoId: b.run, dirs, excludes: DEFAULT_EXCLUDES, testCmd: b.test ?? null, share: false } });
-    this.runs.set(b.run, { id: b.run, g, live: this.liveOf(g), repo: b.repo, landed: b.landed, test: b.test ?? null, queue: new MergeQueue(), agents: new Map() });
+    this.runs.set(b.run, { id: b.run, g, live: this.liveOf(g), repo: b.repo, landed: b.landed, test: b.test ?? null, compile: b.compile ?? null, queue: new MergeQueue(), agents: new Map() });
     return { ok: true, ms: Date.now() - t0, stats };
   }
 
@@ -134,7 +134,7 @@ export class LiveRoutes {
     const a = r?.agents.get(agent);
     if (!r || !a) return null;
     return r.queue.enqueue(async () => {
-      const res = await landOne({ repo: r.repo, wt: a.worktree, landed: r.landed, agent, title: a.title, testCmd: r.test, g: r.g });
+      const res = await landOne({ repo: r.repo, wt: a.worktree, landed: r.landed, agent, title: a.title, testCmd: r.test, compileCmd: r.compile, g: r.g });
       if (res.status === 'landed') {
         await r.live.land(agent, res.regions, { sha: res.sha!, task: a.task });
         await r.g.query('MATCH (t:Task {id: $task}) SET t.doneAt = $now', { task: a.task, now: Date.now() });

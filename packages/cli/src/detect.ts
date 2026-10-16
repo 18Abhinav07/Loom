@@ -20,7 +20,7 @@ export function detectLangs(files: string[]): Record<string, number> {
 export function detectCompile(root: string, langs: Record<string, number>): string | null {
   const has = (f: string) => existsSync(join(root, f));
   if (has('tsconfig.json') && ((langs.ts ?? 0) + (langs.tsx ?? 0)) > 0) return 'npx tsc --noEmit -p .';
-  if (has('go.mod')) return 'go vet ./...';
+  if (has('go.mod')) return 'go build ./...';   // vet stops at the first type error per package, build lists them all
   if (has('Cargo.toml')) return 'cargo check -q';
   if (has('pom.xml')) return 'mvn -q compile';
   if (readdirSync(root).some((f) => f.startsWith('build.gradle'))) return 'gradle -q compileJava';

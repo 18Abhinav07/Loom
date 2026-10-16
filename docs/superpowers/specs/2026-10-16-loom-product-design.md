@@ -265,7 +265,7 @@ New edges:
 |---|---|---|
 | Python | Loom's reader (exists) | merge, callers, tests |
 | TypeScript / TSX / JavaScript | tree-sitter packs (exist in `indexer/src/regions/packs/`). Init indexes these files too, not only Python folders. | merge, callers, tests; TS also `tsc --noEmit`, with only new errors blocking |
-| Go, Rust, Java | whole-file regions (spec §3.7 fallback) | merge, tests, plus the compiler (`go vet` / `cargo check` / `javac` via the build tool), new errors only |
+| Go, Rust, Java | whole-file regions (spec §3.7 fallback) | merge, tests, plus the compiler (`go build` / `cargo check` / `javac` via the build tool), new errors only |
 | Markdown, JSON | heading and key regions (spec §3.7) | merge |
 
 Init detects languages by file count and sets `compile` per detected typed language. Plain JS has no compiler gate. A file in a language with no pack is still locked, just whole-file.
@@ -311,7 +311,7 @@ Every step ends with an end-to-end test that runs the real CLI, real `claude` an
 **B2. Languages** (§6).
 - *Proof:*
   - A TS repo: per-function locks are seen. An agent's type break in another file is rejected at landing; an existing base error does not block.
-  - A Go repo: whole-file locks, and `go vet` new-errors-only.
+  - A Go repo: whole-file locks, and `go build` new-errors-only.
   - The Python STALE-bench repo is unchanged.
 
 **B3. The lead** (§3.2, §3.3): channel, mirror, permission relay, token, degraded mode, first briefing, plan finding, `.loom/plans/`, the checker, and `turn`/`tool`/`plan` events.
