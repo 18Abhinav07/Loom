@@ -61,3 +61,16 @@ test('no false alarms: a body-only change, a compatible signature change, and a 
   put(y, 'pkg/d.py', 'import os\n\n\ndef e():\n    return os.path.join("a", "b")\n');   // calls outside the repo are not judged
   expect((await land(r, y, 'y')).status).toBe('landed');
 });
+
+test('a test that calls with the wrong arguments on purpose, inside raises(TypeError), lands; the same call elsewhere does not', async () => {
+  const neg = (body: string) => `from pkg.a import f\nimport pytest\nimport unittest\n\n\n${body}`;
+  const { r, y } = repo();
+  put(y, 'tests/test_f.py', neg('def test_extra():\n    with pytest.raises(TypeError):\n        f(1, 2)\n\n\n'
+    + 'class T(unittest.TestCase):\n    def test_none(self):\n        with self.assertRaises((TypeError, ValueError)):\n            f()\n'));
+  expect((await land(r, y, 'y')).status).toBe('landed');
+  const { r: r2, y: y2 } = repo();
+  put(y2, 'tests/test_f.py', neg('def test_extra():\n    with pytest.raises(ValueError):\n        f(1, 2)\n    f(1, 2)\n'));
+  const res = await land(r2, y2, 'y');
+  expect(res.status).toBe('contract_break');                                             // ValueError is not what a bad call raises
+  expect(res.tail.match(/test_extra calls f/g)).toHaveLength(2);
+});

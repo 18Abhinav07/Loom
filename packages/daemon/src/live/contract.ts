@@ -11,6 +11,20 @@ const git = (cwd: string, ...a: string[]) => spawnSync('git', a, { cwd, encoding
 const PY = /\.py$/;
 const shape = (c: CallRec) => [c.argc ? `${c.argc} positional` : 'no positional', c.kwargs.length ? `keywords ${c.kwargs.join(', ')}` : ''].filter(Boolean).join(', ');
 
+// A test that calls with the wrong arguments on purpose expects the TypeError that call raises: not a break.
+const RAISES_TYPE = /^\s*(async\s+)?with\b.*\b(raises|assertRaises|assertRaisesRegexp?)\s*\(\s*\(?[^)]*\bTypeError\b/;
+const indent = (l: string) => l.length - l.trimStart().length;
+function expectsTypeError(source: string, line: number): boolean {
+  const ls = source.split('\n');
+  let lvl = indent(ls[line - 1] ?? '');
+  for (let i = line - 2; i >= 0 && lvl > 0; i--) {
+    if (!ls[i].trim() || indent(ls[i]) >= lvl) continue;
+    lvl = indent(ls[i]);
+    if (RAISES_TYPE.test(ls[i])) return true;
+  }
+  return false;
+}
+
 export async function contractBreaks(wt: string, from: string, to: string): Promise<Break[]> {
   const cache = new Map<string, FileIndex | null>();
   const at = async (ref: string, f: string): Promise<FileIndex | null> => {
@@ -57,7 +71,7 @@ export async function contractBreaks(wt: string, from: string, to: string): Prom
     const callee = c.callee;
     if (known && !target) out.set(key, { file, line: c.line, caller, callee, why: `${callee} does not exist in the merged code` });
     else if (target?.kind === 'class' || !target) continue;
-    else if (callSatisfies(c, target.params) === false) out.set(key, { file, line: c.line, caller, callee, why: `called with ${shape(c)}; the merged signature is ${target.sig}` });
+    else if (callSatisfies(c, target.params) === false && !expectsTypeError((await at(to, file))!.source, c.line)) out.set(key, { file, line: c.line, caller, callee, why: `called with ${shape(c)}; the merged signature is ${target.sig}` });
   }
   return [...out.values()].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
 }
