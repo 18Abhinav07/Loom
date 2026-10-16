@@ -1,4 +1,4 @@
-// loom init | up | down | status | why | verify | lesson — attach a repo to Loom and run the daemon for plain `claude` sessions.
+// loom init | lead | up | down | status | why | verify | lesson — attach a repo to Loom, start the lead, and run the daemon for plain `claude` sessions.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -12,6 +12,7 @@ import { resolveAttach, resolveRepo } from '@loom/daemon';
 import { addLesson, DEFAULT_EXCLUDES, ensureLoomDir, finishSession, gitTry, graphName, importSessions, indexRepo, installGitHooks, lessonsFor,
   postCommit, preCommit, readActive, readConfig, reconcile, repoId, sync, type LoomConfig } from '@loom/memory';
 import { detectCompile, detectLangs, sourceDirs } from './detect.js';
+import { startLead } from './lead.js';
 
 const DAEMON = process.env.LOOM_URL ?? 'http://127.0.0.1:4318';
 const UI = process.env.LOOM_UI ?? 'http://127.0.0.1:4317';
@@ -236,7 +237,12 @@ export async function main(argv: string[]): Promise<number> {
     } catch (e) { console.error(`loom init: ${(e as Error).message}`); return 1; }
     console.log(printSummary(r));
     if (!r.committed) console.log('next: commit .loom/ (it carries the regions lock and session records to teammates)');
-    return 0;
+    if (!tty || rest.includes('--no-lead')) { console.log('start the lead with `loom lead`'); return 0; }
+    if (!(await askYes('Start the lead now? [Y/n] '))) { console.log('start the lead later with `loom lead`'); return 0; }
+    return startLead(process.cwd(), {});
+  }
+  if (cmd === 'lead') {
+    try { return startLead(process.cwd(), { extra: rest }); } catch (e) { console.error(`loom lead: ${(e as Error).message}`); return 1; }
   }
   if (cmd === 'hook' && rest[0] === 'git') return gitHook(rest[1]);
   if (cmd === 'sync' || cmd === 'brief' || cmd === 'finish') {
