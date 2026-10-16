@@ -85,6 +85,7 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
   /** The worker stopped: land its work. Work that cannot land goes back to it, on the landed code, with the reason. */
   const finish = async (w: Worker, code: number) => {
     w.rep.exit = code;
+    if (w.rep.paused) return;   // out of usage: nothing to land, and resuming would hit the same limit
     const r: { status: Status; sha: string | null; tail: string; missing?: boolean } = await post(url, '/admin/v2/land', { run, agent: w.t.id });
     w.status = r.status; w.tail = r.tail; w.rep.lands!.push(r.status);   // every landing attempt's outcome, in order
     if (r.status === 'landed') {
@@ -121,7 +122,7 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
       await (await fetch(`${url}/runs/${encodeURIComponent(run)}/notices`)).json().catch(() => []);
     for (const n of ns) {
       const w = workers.get(n.agent);
-      if (n.kind !== 'wake' || n.status !== 'pending' || handled.has(n.id) || !w || w.running || parked.has(w) || w.rep.resumed >= MAX_RESUMES || !w.rep.sessionId) continue;
+      if (n.kind !== 'wake' || n.status !== 'pending' || handled.has(n.id) || !w || w.running || parked.has(w) || w.rep.resumed >= MAX_RESUMES || !w.rep.sessionId || w.rep.paused) continue;
       handled.add(n.id);
       w.running = true;   // claimed before the awaits below, so a second poll cannot resume it twice
       const { text } = await post(url, '/admin/v2/take', { run, agent: w.t.id });

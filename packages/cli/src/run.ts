@@ -11,7 +11,9 @@ export interface RunOpts {
   /** The no-Loom baseline: same worktrees, prompts, parallel launch and merge; no hooks, MCP, leases, wakes or daemon calls. */
   blind?: boolean;
 }
-export interface WorkerReport { agent: string; task: string; exit: number; sessionId?: string; resumed: number; commit?: string; lands?: string[] }
+export interface WorkerReport { agent: string; task: string; exit: number; sessionId?: string; resumed: number; commit?: string; lands?: string[];
+  /** Set when claude stopped on the subscription's usage limit: the work is neither landed nor resumed. */
+  paused?: 'usage limit' }
 export interface RunReport {
   run: string; workers: WorkerReport[];
   merge: { branch: string; conflict: string | null; testsPassed: boolean | null; testOutputTail: string };
@@ -42,6 +44,16 @@ export function exitCode(r: RunReport): number {
   return r.workers.every((w) => w.exit === 0) && !r.merge.conflict && r.merge.testsPassed !== false ? 0 : 1;
 }
 
+const LIMIT = /usage limit|hit your limit|limit reached/i;
+/** True for a stream-json error line saying the usage limit was hit. A normal answer that mentions limits does not count. */
+export function usageLimited(line: string): boolean {
+  let j: any;
+  try { j = JSON.parse(line); } catch { return false; }
+  if (j?.type === 'result' && j.is_error === true) return LIMIT.test(String(j.result ?? ''));
+  if (j?.type === 'assistant' && j.error) return LIMIT.test(JSON.stringify(j.message?.content ?? ''));
+  return false;
+}
+
 export interface SpawnOpts { id: string; wt: string; prompt: string; resume?: string; rep: WorkerReport; runDir: string;
   model?: string; claudeBin?: string; env: NodeJS.ProcessEnv; blind?: boolean; tools?: string[] }
 /** One headless claude in its worktree; stream-json goes to <runDir>/<id>.jsonl and the first session id onto the report. */
@@ -57,10 +69,12 @@ export function spawnClaude(s: SpawnOpts): Promise<number> {
     let buf = '';
     p.stdout.on('data', (d: Buffer) => {
       out.write(d);
-      if (s.rep.sessionId) return;
       buf += d.toString();
-      for (const line of buf.split('\n').slice(0, -1)) {
-        try { const j = JSON.parse(line); if (j.type === 'system' && j.subtype === 'init' && j.session_id) { s.rep.sessionId = j.session_id; break; } } catch { /* partial or non-JSON line */ }
+      const lines = buf.split('\n'); buf = lines.pop()!;
+      for (const line of lines) {
+        if (usageLimited(line)) s.rep.paused = 'usage limit';
+        if (s.rep.sessionId) continue;
+        try { const j = JSON.parse(line); if (j.type === 'system' && j.subtype === 'init' && j.session_id) s.rep.sessionId = j.session_id; } catch { /* non-JSON line */ }
       }
     });
     p.stderr.pipe(err);

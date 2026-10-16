@@ -31,6 +31,11 @@ const next = process.env.FAKE_LOG ? join(process.env.FAKE_LOG, `${agent}.resumes
 let s = m ? JSON.parse(m[1]) : {};
 if (m && next) writeFileSync(next, JSON.stringify(s.resumes ?? []));
 else if (resume && next && existsSync(next)) { const q = JSON.parse(readFileSync(next, 'utf8')); s = q.shift() ?? {}; writeFileSync(next, JSON.stringify(q)); }
+if (s.limit) {   // what claude -p prints when the subscription's usage limit is hit
+  out({ type: 'assistant', message: { content: [{ type: 'text', text: "You've hit your limit · resets 2:30am" }] }, error: 'rate_limit' });
+  out({ type: 'result', subtype: 'success', is_error: true, result: "You've hit your limit · resets 2:30am" });
+  process.exit(1);
+}
 if (s.sleep) await new Promise((r) => setTimeout(r, s.sleep));
 if (s.read) fire('PostToolUse', { tool_name: 'Read', tool_input: { file_path: resolve(s.read) }, tool_response: {} });
 for (const [file, old, now] of s.edits ?? (s.edit ? [s.edit] : [])) {
