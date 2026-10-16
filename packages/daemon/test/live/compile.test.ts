@@ -55,3 +55,15 @@ test('a change that adds no new error lands despite the base error', async () =>
   expect(res.status).toBe('landed');
   expect(rev(r)).toBe(res.sha);
 });
+
+const TSC = join(__dirname, '..', '..', '..', '..', 'node_modules', '.bin', 'tsc');
+test('TS: changing f(x: number) to f(x: string) breaks a caller in another file → compile_failed naming TS2345', async () => {
+  const r = gitTree({ 'tsconfig.json': '{"compilerOptions":{"strict":true,"noEmit":true},"include":["src"]}\n',
+    'src/a.ts': 'export function f(x: number): number {\n  return x;\n}\n', 'src/b.ts': "import { f } from './a';\nexport const y = f(1);\n" });
+  git(r, 'branch', 'landed');
+  const w = mkdtempSync(join(tmpdir(), 'c-ts-')); git(r, 'worktree', 'add', '-q', '-b', 'x', w);
+  writeFileSync(join(w, 'src/a.ts'), 'export function f(x: string): string {\n  return x;\n}\n');
+  const res = await landOne({ ...job(r, w), compileCmd: `${TSC} --noEmit -p .` });
+  expect(res.status).toBe('compile_failed');
+  expect(res.tail).toMatch(/src\/b\.ts: error TS2345/);
+});
