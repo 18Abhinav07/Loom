@@ -23,7 +23,14 @@ export const SUFFIX = "\n\nYou are one of several agents working in parallel on 
 // Blind agents still know they are not alone; they just have no channel to the others.
 export const SUFFIX_BLIND = "\n\nYou are one of several agents working in parallel on this repo; other agents may be changing shared code at the "
   + 'same time, and all changes will be merged together when everyone finishes. Do not commit; your work is committed when you finish.';
-const TOOLS = ['Edit', 'Write', 'MultiEdit', 'Read', 'Grep', 'Glob', 'Bash(git:*)', 'Bash(python:*)', 'mcp__loom__*'];
+const TOOLS = ['Edit', 'Write', 'MultiEdit', 'Read', 'Grep', 'Glob', 'Bash(git:*)', 'Bash(python:*)', 'Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'mcp__loom__*'];
+/** The command word of a shell line: the first token that is not a VAR=value assignment. */
+const word = (cmd: string) => cmd.trim().split(/\s+/).find((t) => !/^\w+=/.test(t));
+/** What a worker may run: the base tools plus the plan's test and compile commands. Blind workers get no Loom tools. */
+export function allowedTools(o: { test?: string | null; compile?: string | null; blind?: boolean }): string[] {
+  const extra = [o.test, o.compile].map((c) => (c ? word(c) : undefined)).filter((w): w is string => !!w).map((w) => `Bash(${w}:*)`);
+  return [...new Set([...TOOLS, ...extra])].filter((t) => !(o.blind && t.startsWith('mcp__')));
+}
 const KEEP_OUT = ['.', ':!.claude', ':!.loom-mcp.json'];
 /** A worker waiting along a chain of holders (A, then B, then C) is resumed once per landing. */
 export const MAX_RESUMES = 3;
@@ -36,13 +43,13 @@ export function exitCode(r: RunReport): number {
 }
 
 export interface SpawnOpts { id: string; wt: string; prompt: string; resume?: string; rep: WorkerReport; runDir: string;
-  model?: string; claudeBin?: string; env: NodeJS.ProcessEnv; blind?: boolean }
+  model?: string; claudeBin?: string; env: NodeJS.ProcessEnv; blind?: boolean; tools?: string[] }
 /** One headless claude in its worktree; stream-json goes to <runDir>/<id>.jsonl and the first session id onto the report. */
 export function spawnClaude(s: SpawnOpts): Promise<number> {
   return new Promise<number>((done) => {
     const args = ['-p', s.prompt, ...(s.resume ? ['--resume', s.resume] : []), '--model', s.model ?? 'sonnet', '--output-format', 'stream-json',
       '--verbose', '--setting-sources', 'project,local', ...(s.blind ? [] : ['--mcp-config', join(s.wt, '.loom-mcp.json')]),
-      '--permission-mode', 'acceptEdits', '--allowedTools', ...(s.blind ? TOOLS.filter((t) => !t.startsWith('mcp__')) : TOOLS)];
+      '--permission-mode', 'acceptEdits', '--allowedTools', ...(s.tools ?? allowedTools({ blind: s.blind }))];
     const bin = s.claudeBin?.includes('/') ? resolve(s.claudeBin) : s.claudeBin ?? 'claude';   // workers run in their worktree
     const p = spawn(bin, args, { cwd: s.wt, stdio: ['ignore', 'pipe', 'pipe'], env: s.env });
     const out = createWriteStream(join(s.runDir, `${s.id}.jsonl`), { flags: 'a' });

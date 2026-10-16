@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { handover } from '@loom/daemon';
 import type { PlanTask } from '@loom/planner';
 import { exclude, mergeHooks, pyDirs } from './loom.js';
-import { MAX_RESUMES, spawnClaude, SUFFIX, type RunOpts, type RunReport, type WorkerReport } from './run.js';
+import { allowedTools, MAX_RESUMES, spawnClaude, SUFFIX, type RunOpts, type RunReport, type WorkerReport } from './run.js';
 
 type Status = 'landed' | 'empty' | 'conflict' | 'tests_failed' | 'contract_break';
 interface Worker { t: PlanTask; wt: string; branch: string; rep: WorkerReport; running: boolean; status: Status | null; tail: string }
@@ -64,9 +64,10 @@ export async function runPlan2(o: RunOpts): Promise<RunReport> {
   }
 
   const env: NodeJS.ProcessEnv = { ...process.env };
-  delete env.ANTHROPIC_API_KEY; delete env.ANTHROPIC_AUTH_TOKEN;   // the subscription login, never a paid key
+  for (const k of Object.keys(env)) if (k.startsWith('ANTHROPIC_')) delete env[k];   // the subscription login, never a paid key
+  const tools = allowedTools({ test: testCmd, compile: o.plan.compile ?? cfg.compile ?? null });
   const claude = (w: Worker, prompt: string, resume?: string) => spawnClaude({ id: w.t.id, wt: w.wt, prompt, resume, rep: w.rep, runDir,
-    model: o.model, claudeBin: o.claudeBin, env: { ...env, LOOM_RUN: run, LOOM_AGENT: w.t.id, LOOM_URL: url } });
+    model: o.model, claudeBin: o.claudeBin, tools, env: { ...env, LOOM_RUN: run, LOOM_AGENT: w.t.id, LOOM_URL: url } });
 
   const queue: (() => Promise<void>)[] = [];
   const launch = (w: Worker, prompt: string, resume?: string) => {
