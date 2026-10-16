@@ -23,6 +23,7 @@ import { LiveRoutes } from './live/routes.js';
 import { activeSession, finishSession, gitTry, lessonsFor, startSession } from '@loom/memory';
 import { Bus } from './bus.js';
 import { Mirror } from './mirror.js';
+import { Channels } from './channels.js';
 import { authorized, machineToken } from './token.js';
 
 const PY_PATH = /[\w./-]+\.py\b/g;
@@ -71,6 +72,8 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     const a = repo ? activeSession(repo.top, claude) : null;
     return repo && a ? { claude, sid: a.sid, writer: a.writer, person: gitTry(repo.top, 'config', 'user.email') ?? 'unknown', repo: repo.top } : null;
   });
+  const channels = new Channels(leadBus, mirror);
+  const ppidsOf = (h: IncomingMessage['headers']) => String(h['x-loom-ppids'] ?? '').split(',').map(Number).filter((n) => n > 1);
   const recorder = new Recorder(opts.recordDir ?? join(homedir(), '.loom', 'runs'));
   const record = (run: string, route: string, b: unknown) => {
     try { recorder.record(run, route, b); } catch (e) { console.error(`[loom] record failed: ${String(e)}`); }
@@ -169,7 +172,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       const u = new URL(req.url ?? '/', 'http://x');
       const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
       if (req.method === 'GET' && u.pathname === '/health') return send(200, { ok: true, runs: runs.size, readOnly: Boolean(opts.readOnly), pid: process.pid });
-      if (parts[0] === 'events' || parts[0] === 'sessions') {   // B3: the lead/session surface; machine token required
+      if (parts[0] === 'events' || parts[0] === 'sessions' || parts[0] === 'channels') {   // B3: the lead/session surface; machine token required
         if (!authorized(req, token)) return send(401, { error: 'token required: x-loom-token or ?token= (see ~/.loom/token)' });
         if (req.method === 'GET' && parts[0] === 'events' && parts.length === 1) {
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
@@ -182,10 +185,38 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
           req.on('close', () => { off(); clearInterval(ping); });
           return;
         }
+        if (parts[0] === 'channels') {   // loom-mcp's push port registers here; its pid is the claude pid
+          if (req.method === 'GET' && parts.length === 2) return channels.known(Number(parts[1])) ? send(200, { ok: true }) : send(404, { error: 'unknown channel' });
+          const b = await body(req);
+          if (req.method === 'POST' && parts.length === 1) {
+            if (!(Number(b.pid) > 1 && Number(b.port) > 0 && /^[0-9a-f]{32}$/.test(String(b.secret)))) return send(400, { error: 'need {pid, port, secret, cwd}' });
+            channels.register({ pid: Number(b.pid), port: Number(b.port), secret: String(b.secret), cwd: String(b.cwd ?? '') });
+            return send(200, { ok: true });
+          }
+          if (req.method === 'POST' && parts[1] === 'permission') {
+            const l = channels.permission(Number(b.pid), b);
+            return l ? send(200, { ok: true, sid: l.sid }) : send(404, { error: 'no session bound to that channel' });
+          }
+        }
+        if (req.method === 'POST' && parts[0] === 'sessions' && parts.length >= 3) {
+          const l = mirror.bySid(parts[1]);
+          if (!l) return send(404, { error: 'no live session with that id' });
+          const b = await body(req);
+          if (parts[2] === 'messages' && parts.length === 3) {
+            const text = typeof b.text === 'string' ? b.text.trim() : '';
+            if (!text) return send(400, { error: 'need {text}' });
+            const status = await channels.send(l, text);
+            return status === 'no-channel' ? send(409, { error: 'read-only: restart the lead with loom lead to chat here' }) : send(200, { status });
+          }
+          if (parts[2] === 'permissions' && parts.length === 4) {
+            if (b.behavior !== 'allow' && b.behavior !== 'deny') return send(400, { error: 'behavior is allow or deny' });
+            return (await channels.answer(l, parts[3], b.behavior)) ? send(200, { ok: true }) : send(409, { error: 'unknown or already answered request' });
+          }
+        }
         if (req.method === 'GET' && parts[0] === 'sessions' && parts.length === 1) return send(200, [...mirror.live.values()].map((l) => mirror.row(l)));
         if (req.method === 'GET' && parts[0] === 'sessions' && parts.length === 2) {
           const l = mirror.bySid(parts[1]);
-          return l ? send(200, mirror.detail(l)) : send(404, { error: 'no live session with that id' });
+          return l ? send(200, { ...mirror.detail(l), pending: channels.pending(l), queued: channels.queue(l) }) : send(404, { error: 'no live session with that id' });
         }
       }
       if (opts.readOnly && req.method !== 'GET' && u.pathname !== '/replay' && req.headers['x-loom-replay'] !== replayToken)
@@ -224,16 +255,20 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
                 const person = gitTry(repo.top, 'config', 'user.email') ?? 'unknown';
                 const writer = req.headers['x-loom-lead'] === '1' ? 'lead' : 'main';
                 const { sid, briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive', claudeSid: input.session_id ?? null, writer, surface: 'terminal' });
-                if (input.session_id) mirror.start({ claude: input.session_id, sid, writer, person, repo: repo.top });
+                if (input.session_id) { mirror.start({ claude: input.session_id, sid, writer, person, repo: repo.top }); channels.bind(input.session_id, ppidsOf(req.headers)); }
                 return send(200, { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: briefing } });
               }
               await finishSession(repo.graph, repo.top, { transcriptPath: (input as any).transcript_path, claudeSid: input.session_id ?? null });
-              if (input.session_id) mirror.end(input.session_id);
+              if (input.session_id) { mirror.end(input.session_id); channels.drop(input.session_id); }
               return send(200, {});
             }
           }
           if (!req.headers['x-loom-run'] && !req.headers['x-loom-agent'])   // §3.2: mirror interactive turns; never blocks the hook
-            await mirror.hook(parts[2], input).catch((e) => console.error(`[loom] mirror: ${String(e)}`));
+            await mirror.hook(parts[2], input).then((l) => {
+              if (!l) return;
+              channels.bind(l.claude, ppidsOf(req.headers));   // after a daemon restart the session re-binds on its next hook
+              if (parts[2] === 'Stop') void channels.onStop(l);
+            }).catch((e) => console.error(`[loom] mirror: ${String(e)}`));
           const t = await live.target(req.headers, input.cwd, input.session_id);
           if (t) return send(200, await live.hook(parts[2], t, input));
           const r = await runFor(String(req.headers['x-loom-run'] ?? ''), input.cwd);
