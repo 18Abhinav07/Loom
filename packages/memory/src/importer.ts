@@ -45,8 +45,12 @@ function meta(root: string, sha: string) {
 
 const STUB = 'MERGE (r:Region {id: rid}) ON CREATE SET r.stub = true';
 const Q: Record<string, string> = {
-  session: `MERGE (s:Session {id: $sid}) SET s.person = $person, s.kind = $kind, s.base = $base, s.upstream = $upstream, s.started = $at
-    MERGE (p:Person {id: $person}) MERGE (p)-[:STARTED]->(s)`,
+  session: `MERGE (s:Session {id: $sid}) SET s.person = $person, s.kind = $kind, s.base = $base, s.upstream = $upstream, s.started = $at,
+      s.writer = $writer, s.surface = $surface, s.claude = $claude, s.parent = $parent, s.team = $team, s.plan = $plan, s.task = $task
+    MERGE (p:Person {id: $person}) MERGE (p)-[:STARTED]->(s)
+    FOREACH (_ IN CASE WHEN $parent IS NULL THEN [] ELSE [1] END | MERGE (ps:Session {id: $parent}) MERGE (s)-[:CHILD_OF]->(ps))
+    FOREACH (_ IN CASE WHEN $team IS NULL THEN [] ELSE [1] END | MERGE (t:Team {id: $team}) MERGE (s)-[:IN]->(t)
+      FOREACH (_ IN CASE WHEN $plan IS NULL THEN [] ELSE [1] END | MERGE (pl:Plan {slug: $plan}) MERGE (t)-[:OF]->(pl)))`,
   agent: `MERGE (s:Session {id: $sid}) MERGE (a:Agent {id: $sid + '/' + $name}) SET a.model = $model, a.name = $name MERGE (s)-[:RAN]->(a)`,
   task: `MERGE (t:Task {id: $id}) SET t.title = $title, t.status = $status, t.claimed_by = $ag, t.at = $at
     FOREACH (rid IN coalesce($scope, []) | ${STUB} MERGE (t)-[:SCOPE]->(r))`,
@@ -68,13 +72,34 @@ const Q: Record<string, string> = {
   handoff: `MERGE (h:Handoff {id: $id}) SET h.summary = $summary, h.open_leases = $open_leases, h.at = $at
     MERGE (s:Session {id: $sid}) MERGE (h)-[:FROM]->(s)
     FOREACH (tid IN coalesce($open_tasks, []) | MERGE (t:Task {id: tid}) MERGE (h)-[:LEAVES]->(t))`,
+  turn: `MERGE (s:Session {id: $sid}) MERGE (t:Turn {id: $id}) SET t.from = $from, t.text = $text, t.at = $at, t.cut = $cut, t.tools = $toolsJson
+    MERGE (t)-[:IN]->(s)`,
+  tool: `MERGE (s:Session {id: $sid}) MERGE (x:Tool {id: $id}) SET x.name = $name, x.target = $target, x.ok = $ok, x.ms = $ms, x.at = $at
+    MERGE (x)-[:IN]->(s)`,
+  plan: `MERGE (p:Plan {slug: $slug}) SET p.action = $action, p.problems = $problems, p.at = $at
+    MERGE (s:Session {id: $sid}) MERGE (s)-[:PLANNED]->(p)`,
+  team: `MERGE (t:Team {id: $team}) SET t.action = $action, t.at = $at
+    MERGE (s:Session {id: $sid}) MERGE (s)-[:LEADS]->(t)
+    FOREACH (_ IN CASE WHEN $plan IS NULL THEN [] ELSE [1] END | MERGE (p:Plan {slug: $plan}) MERGE (t)-[:OF]->(p))
+    MERGE (e:TeamEvent {id: $id}) SET e.action = $action, e.agent = $agent, e.detail = $detail, e.at = $at MERGE (e)-[:OF]->(t)`,
+  collision: `MERGE (c:Collision {id: $id}) SET c.kind = $kind, c.outcome = $outcome, c.detail = $detail, c.waited_ms = $waited_ms, c.at = $at,
+      c.parties = $partiesJson, c.version = $version
+    FOREACH (rid IN coalesce($region, []) | ${STUB} MERGE (c)-[:AT]->(r))
+    FOREACH (sid IN $partySessions | MERGE (ps:Session {id: sid}) MERGE (c)-[:BETWEEN]->(ps))`,
 };
 const DEFAULTS = { person: null, kind: null, base: null, upstream: null, name: null, model: null, title: null, status: null, scope: null,
   region: null, hash: null, sig: null, deleted: false, degraded: false, prev: null, renamed_from: null, text: null, regions: null,
-  led_to: null, test: null, result: null, versions: null, source: null, thread: null, summary: null, open_leases: null, open_tasks: null };
+  led_to: null, test: null, result: null, versions: null, source: null, thread: null, summary: null, open_leases: null, open_tasks: null,
+  surface: null, claude: null, parent: null, team: null, plan: null, from: null, cut: false, target: null, ok: null, ms: null, slug: null,
+  action: null, problems: null, agent: null, detail: null, outcome: null, waited_ms: null, version: null };
 
 async function apply(g: LoomGraph, root: string, sid: string, writer: string, e: LoomEvent, commit: string | null) {
-  await g.query(Q[e.type], { ...DEFAULTS, ...e, sid, writer, ag: `${sid}/${e.by ?? e.from ?? writer}` });
+  const extra = e.type === 'turn' ? { toolsJson: e.tools ? JSON.stringify(e.tools) : null }
+    : e.type === 'collision' ? { partiesJson: JSON.stringify(e.parties ?? []), partySessions: [...new Set((e.parties ?? []).map((p: any) => p.session))],
+      region: Array.isArray(e.region) ? e.region : e.region ? [e.region] : [] }
+    : e.type === 'session' ? { task: e.task ?? null } : {};
+  // a region event's `region` is one id; a collision's is a list. Session `task` is a slug, never the Task node.
+  await g.query(Q[e.type], { ...DEFAULTS, ...e, ...extra, sid, writer, ag: `${sid}/${e.by ?? (e.type === 'turn' ? writer : e.from) ?? writer}` });
   if (e.type === 'version' && commit) {
     const m = meta(root, commit);
     await g.query(`MATCH (v:Version {id: $id}) MERGE (c:Commit {sha: $sha})

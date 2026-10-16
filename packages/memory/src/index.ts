@@ -13,3 +13,4 @@ export * from './reconcile.js';
 export * from './news.js';
 export * from './sync.js';
 export * from './lessons.js';
+export * from './redact.js';

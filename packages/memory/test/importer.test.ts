@@ -88,3 +88,30 @@ test('current per ref: diverged branches each see their own version', async () =
   expect(await currentVersion(g, r, R, 'main')).toBe(vy.id);
   await g.drop();
 });
+
+test('B3: turn, tool, plan, team and collision events become nodes and edges; session fields link Team and Plan', async () => {
+  const r = repo({ 'a.py': 'def f():\n    return 1\n' }); ensureLoomDir(r, CFG);
+  const lead = ulid(), agent = ulid();
+  appendEvent(r, lead, 'lead', { type: 'session', person: 'a@t', kind: 'interactive', base: null, upstream: null, surface: 'terminal', claude: 'c1', parent: null, team: null, plan: null, task: null });
+  appendEvent(r, lead, 'lead', { type: 'turn', from: 'user', text: 'build the thing' });
+  appendEvent(r, lead, 'lead', { type: 'turn', from: 'claude', text: 'drafted a plan', tools: { Write: 1 } });
+  appendEvent(r, lead, 'lead', { type: 'tool', name: 'Write', target: '.loom/plans/p.md', ok: true, ms: 12 });
+  appendEvent(r, lead, 'lead', { type: 'plan', slug: 'p', action: 'checked', problems: [] });
+  appendEvent(r, lead, 'lead', { type: 'team', team: 'T1', plan: 'p', action: 'started', detail: '2 agents' });
+  appendEvent(r, agent, 'main', { type: 'session', person: 'a@t', kind: 'run', base: null, upstream: null, surface: 'headless', parent: lead, team: 'T1', plan: 'p', task: 'k1' });
+  appendEvent(r, lead, 'lead', { type: 'collision', id: 'col_1', kind: 'lock_wait', region: [R], outcome: 'waited', waited_ms: 900, detail: 'x waited for y',
+    parties: [{ person: 'a@t', session: lead, agent: 'x' }, { person: 'a@t', session: agent, agent: 'y' }] });
+  sh(r, 'add', '-A'); sh(r, 'commit', '-qm', 'c');
+  const g = await testGraph();
+  await importSessions(g, r, null);
+  expect(await count(g, `MATCH (:Turn)-[:IN]->(:Session {id: '${lead}'}) RETURN count(*) AS n`)).toBe(2);
+  expect(await g.query(`MATCH (t:Turn {from: 'claude'}) RETURN t.text AS text, t.tools AS tools`)).toEqual([{ text: 'drafted a plan', tools: '{"Write":1}' }]);
+  expect(await count(g, `MATCH (:Tool {name: 'Write', ok: true})-[:IN]->(:Session {id: '${lead}'}) RETURN count(*) AS n`)).toBe(1);
+  expect(await count(g, `MATCH (p:Plan {slug: 'p'}) WHERE p.action = 'checked' RETURN count(*) AS n`)).toBe(1);
+  expect(await count(g, `MATCH (:Session {id: '${agent}'})-[:IN]->(:Team {id: 'T1'})-[:OF]->(:Plan {slug: 'p'}) RETURN count(*) AS n`)).toBe(1);
+  expect(await count(g, `MATCH (:Session {id: '${agent}'})-[:CHILD_OF]->(:Session {id: '${lead}'}) RETURN count(*) AS n`)).toBe(1);
+  expect(await g.query(`MATCH (s:Session {id: '${lead}'}) RETURN s.surface AS surface, s.claude AS claude`)).toEqual([{ surface: 'terminal', claude: 'c1' }]);
+  expect(await count(g, `MATCH (c:Collision {id: 'col_1', kind: 'lock_wait', outcome: 'waited'})-[:AT]->(:Region {id: '${R}'}) RETURN count(*) AS n`)).toBe(1);
+  expect(await count(g, `MATCH (:Collision {id: 'col_1'})-[:BETWEEN]->(s:Session) RETURN count(DISTINCT s) AS n`)).toBe(2);
+  await g.drop();
+});
