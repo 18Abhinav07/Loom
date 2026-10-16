@@ -26,3 +26,15 @@ Do three Claude Code agents working on intermingled tasks in one codebase ship a
 - One loom readiness run happens first and is **not counted**; it only checks every mechanism fires.
 - If Loom or the harness changes after any counted run, all counted runs are discarded and rerun.
 - Every run's records, transcripts, diffs and logs are kept under `bench/runs/e5/<stamp>/`. No run is dropped; crashed runs count as failures.
+
+## Addendum (2026-10-16, before any of these runs)
+The harness changed after the counted x1 runs (e916b94: denial/handover counting and the rep field; this commit: each worker's
+landing outcomes `lands`). Run behaviour is unchanged, but the rule above says changed harness → counted runs discarded. So:
+- **x1_textlist** is rerun, 3 reps per arm, with this harness. The earlier x1 runs (`20261016-110735`) stay on disk, not counted.
+- **t1_slugpath** (semantic breakage: a makes `slugify`'s `strict` keyword required while b/c write new callers) gets the same
+  rule, 3 reps per arm, run in the same invocation. Its earlier runs (n=2) are not counted.
+- **f1_oldcall** is a **fault-injection mechanism check, not counted toward any thesis**: c is instructed to keep calling
+  `slugify(part)` whatever it is told. Pass condition, decided now: in every loom rep at least one landing ends
+  `contract_break` and the landed branch never contains a call that does not fit `slugify`'s merged signature (c's oracle may
+  fail; that is c's injected fault). Blind is run beside it to show what the same agents merge without the check.
+  1 rep per arm, 3 if the first loom rep does not show a `contract_break` (reported either way).

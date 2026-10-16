@@ -23,7 +23,7 @@ from pathlib import Path
 
 from e1.django_ws import BENCH, MIRROR, ensure_mirror
 
-from .scenarios import COMPLEX, PILOT, RULES, SCENARIOS, TEAM, Agent, Scenario
+from .scenarios import COMPLEX, FAULT, PILOT, RULES, SCENARIOS, TEAM, Agent, Scenario
 
 ROOT = BENCH.parent
 CLI = ROOT / "packages" / "cli" / "dist" / "loom.cjs"
@@ -176,7 +176,7 @@ def grade(sc: Scenario, cond: str, repo: Path, rep: dict, wall: float) -> dict:
             _git("worktree", "remove", "--force", str(st), cwd=repo, check=False)
         merged, err = check(merged_tree, a, sc.apps)
         mine = [n for n in notices if n.get("agent") == a.id]
-        agents[a.id] = {"exit": w["exit"], "commit": bool(w.get("commit")), "resumed": w.get("resumed", 0),
+        agents[a.id] = {"exit": w["exit"], "commit": bool(w.get("commit")), "resumed": w.get("resumed", 0), "lands": w.get("lands", []),
                         "solo": solo, "merged": merged, "err": err[-300:],
                         "notices": len(mine), "delivered": sum(n.get("deliveredAt") is not None for n in mine),
                         **_transcript_stats(tdir / f"{a.id}.jsonl")}
@@ -224,7 +224,7 @@ def main() -> None:
     rec_f = out / "records.jsonl"
     recs = [json.loads(l) for l in rec_f.read_text().splitlines()] if rec_f.exists() else []
     done = {(r["scenario"], r["cond"], r.get("rep", 0)) for r in recs}
-    ids = {"pilot": PILOT, "team": TEAM, "complex": COMPLEX, "all": [s.id for s in SCENARIOS]}.get(a.set) or a.set.split(",")
+    ids = {"pilot": PILOT, "team": TEAM, "complex": COMPLEX, "fault": FAULT, "all": [s.id for s in SCENARIOS]}.get(a.set) or a.set.split(",")
     for sc, rep, cond in ((s, i, c) for s in SCENARIOS if s.id in ids for i in range(a.reps) for c in a.conds.split(",")):
             if (sc.id, cond, rep) in done:
                 continue
