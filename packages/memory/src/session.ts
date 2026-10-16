@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { LoomGraph } from '@loom/core';
 import { appendEvent } from './events.js';
 import { git, gitTry } from './git.js';
+import { leadBriefing } from './plandocs.js';
 import { ulid } from './ids.js';
 import { sync } from './sync.js';
 
@@ -37,7 +38,7 @@ export async function startSession(g: LoomGraph, root: string, o: SessionOpts) {
   appendEvent(root, sid, writer, { type: 'agent', name: writer, model: o.model ?? null });
   writeActive(root, { sid, writer, by: writer, task: o.task ?? null, claude: o.claudeSid ?? null }, o.claudeSid);
   const { briefing } = await sync(g, root, { me: o.person, fetch: true, quiet: true });
-  return { sid, briefing };
+  return { sid, briefing: writer === 'lead' ? `${briefing ? `${briefing}\n\n` : ''}${leadBriefing(root)}` : briefing };
 }
 
 /** Last assistant text in a Claude Code transcript (jsonl); '' when unreadable. */
