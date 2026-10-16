@@ -20,7 +20,10 @@ import { renderWhy, why } from './why.js';
 import { filePatch, replay, type ReplayProgress } from './replay.js';
 import { resolveRepo } from './repo.js';
 import { LiveRoutes } from './live/routes.js';
-import { finishSession, gitTry, lessonsFor, startSession } from '@loom/memory';
+import { activeSession, finishSession, gitTry, lessonsFor, startSession } from '@loom/memory';
+import { Bus } from './bus.js';
+import { Mirror } from './mirror.js';
+import { authorized, machineToken } from './token.js';
 
 const PY_PATH = /[\w./-]+\.py\b/g;
 
@@ -45,7 +48,9 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   /** Spec §4.4 deployed mode: every write route refuses except /replay of a recording under `replayRoots`. */
   readOnly?: boolean; tenant?: string; replayRoots?: string[]; host?: string;
   /** Story's launcher and showcase: the bench dir it runs E1 in, how it spawns, the recording "Watch 3 real agents" replays. */
-  benchRoot?: string; benchRunner?: BenchRunner; demoRun?: string }) {
+  benchRoot?: string; benchRunner?: BenchRunner; demoRun?: string;
+  /** The Loom home holding `token` (B3); tests pass a tmp dir. Default LOOM_HOME, else ~/.loom. */
+  home?: string }) {
   /** C1 fixed: a run's lessons live in that run's own graph; no graph is shared between runs or tenants. P3 moves runs into the repo graph. */
   const lessonsOf = (run: string) => new Lessons(opts.db.graph(run));
   const runs = new Map<string, Coordinator>();
@@ -59,6 +64,13 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   };
   const bus = new EventBus();
   const live = new LiveRoutes(opts.db);
+  const token = machineToken(opts.home ?? process.env.LOOM_HOME ?? join(homedir(), '.loom'));
+  const leadBus = new Bus();
+  const mirror = new Mirror(leadBus, async (cwd, claude) => {   // a session that started before this daemon did
+    const repo = await resolveRepo(opts.db, cwd, opts.home);
+    const a = repo ? activeSession(repo.top, claude) : null;
+    return repo && a ? { claude, sid: a.sid, writer: a.writer, person: gitTry(repo.top, 'config', 'user.email') ?? 'unknown', repo: repo.top } : null;
+  });
   const recorder = new Recorder(opts.recordDir ?? join(homedir(), '.loom', 'runs'));
   const record = (run: string, route: string, b: unknown) => {
     try { recorder.record(run, route, b); } catch (e) { console.error(`[loom] record failed: ${String(e)}`); }
@@ -157,6 +169,25 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       const u = new URL(req.url ?? '/', 'http://x');
       const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
       if (req.method === 'GET' && u.pathname === '/health') return send(200, { ok: true, runs: runs.size, readOnly: Boolean(opts.readOnly), pid: process.pid });
+      if (parts[0] === 'events' || parts[0] === 'sessions') {   // B3: the lead/session surface; machine token required
+        if (!authorized(req, token)) return send(401, { error: 'token required: x-loom-token or ?token= (see ~/.loom/token)' });
+        if (req.method === 'GET' && parts[0] === 'events' && parts.length === 1) {
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
+          const out = (e: unknown) => { if (!res.writableEnded && !res.destroyed) res.write(`data: ${JSON.stringify(e)}\n\n`); };
+          const since = u.searchParams.has('since') ? Number(u.searchParams.get('since')) : leadBus.last;
+          for (const e of leadBus.since(since)) out(e);
+          res.write(': ok\n\n');
+          const off = leadBus.subscribe(out);
+          const ping = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, 15_000); ping.unref();
+          req.on('close', () => { off(); clearInterval(ping); });
+          return;
+        }
+        if (req.method === 'GET' && parts[0] === 'sessions' && parts.length === 1) return send(200, [...mirror.live.values()].map((l) => mirror.row(l)));
+        if (req.method === 'GET' && parts[0] === 'sessions' && parts.length === 2) {
+          const l = mirror.bySid(parts[1]);
+          return l ? send(200, mirror.detail(l)) : send(404, { error: 'no live session with that id' });
+        }
+      }
       if (opts.readOnly && req.method !== 'GET' && u.pathname !== '/replay' && req.headers['x-loom-replay'] !== replayToken)
         return send(403, { error: 'read-only: only /replay is open' });
       if (u.pathname === '/replay') {   // loom replay <dir>: drive a recording into a fresh <tenant>:replay:<id> graph
@@ -191,14 +222,18 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
               if (t) await live.hook(parts[2], t, input);   // registers on start, releases leases on end
               if (parts[2] === 'SessionStart') {
                 const person = gitTry(repo.top, 'config', 'user.email') ?? 'unknown';
-                const { briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive', claudeSid: input.session_id ?? null,
-                  writer: req.headers['x-loom-lead'] === '1' ? 'lead' : 'main', surface: 'terminal' });
+                const writer = req.headers['x-loom-lead'] === '1' ? 'lead' : 'main';
+                const { sid, briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive', claudeSid: input.session_id ?? null, writer, surface: 'terminal' });
+                if (input.session_id) mirror.start({ claude: input.session_id, sid, writer, person, repo: repo.top });
                 return send(200, { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: briefing } });
               }
               await finishSession(repo.graph, repo.top, { transcriptPath: (input as any).transcript_path, claudeSid: input.session_id ?? null });
+              if (input.session_id) mirror.end(input.session_id);
               return send(200, {});
             }
           }
+          if (!req.headers['x-loom-run'] && !req.headers['x-loom-agent'])   // §3.2: mirror interactive turns; never blocks the hook
+            await mirror.hook(parts[2], input).catch((e) => console.error(`[loom] mirror: ${String(e)}`));
           const t = await live.target(req.headers, input.cwd, input.session_id);
           if (t) return send(200, await live.hook(parts[2], t, input));
           const r = await runFor(String(req.headers['x-loom-run'] ?? ''), input.cwd);
