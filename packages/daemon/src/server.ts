@@ -13,6 +13,7 @@ import { mergeCheck, UnknownSide } from './mergecheck.js';
 import { cfgFor } from './verify.js';
 import { EventBus, Recorder } from './events.js';
 import { TraceWriter } from './trace.js';
+import { leadPage, passThrough } from './leadpage.js';
 import { Reply, startUi } from './ui.js';
 import { BenchRun, type BenchRunner } from './benchrun.js';
 import { checkTeamPlan, listPlans, parseTeamPlan, partition, scope, validatePlan, type PlanTask } from '@loom/planner';
@@ -486,7 +487,13 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   await new Promise<void>((r) => server.listen(opts.port, opts.host ?? '127.0.0.1', r));
   const port = (server.address() as { port: number }).port;
   const ui = opts.uiPort === null ? null
-    : await startUi({ port: opts.uiPort ?? 4317, host: opts.host, bus, runs, distDir: opts.distDir ?? DIST, serves, extra: async (u, req) => {
+    : await startUi({ port: opts.uiPort ?? 4317, host: opts.host, bus, runs, distDir: opts.distDir ?? DIST, serves, raw: async (u, req, res) => {
+      if (u.pathname !== '/lead' && !u.pathname.startsWith('/lead/api/')) return false;
+      if (opts.readOnly) { res.writeHead(404, { 'content-type': 'application/json' }); res.end('{"error":"read-only: the lead page is local only"}'); }   // never hand out the token
+      else if (u.pathname === '/lead') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(leadPage(token)); }
+      else await passThrough(req, res, port, u.pathname.slice('/lead/api'.length), u.search);
+      return true;
+    }, extra: async (u, req) => {
       const run = u.searchParams.get('run') ?? '';
       if (u.pathname === '/bench/run') {
         if (req.method === 'GET') return { readOnly: Boolean(opts.readOnly), ...benchRun.status() };

@@ -158,6 +158,10 @@ export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: stri
       const m = existsSync(mp) ? JSON.parse(readFileSync(mp, 'utf8')) : {};
       (m.mcpServers ??= {}).loom = { command: 'node', args: [o.mcpPath] };
       writeFileSync(mp, JSON.stringify(m, null, 2) + '\n');
+      // pre-approve it: claude's own prompt defaults to "continue without", and then the lead has no channel
+      const st = JSON.parse(readFileSync(sp, 'utf8'));
+      st.enabledMcpjsonServers = [...new Set([...(st.enabledMcpjsonServers ?? []), 'loom'])];
+      writeFileSync(sp, JSON.stringify(st, null, 2) + '\n');
     }
     await importSessions(g, mainRoot, null);
     if (hadLock) await reconcile(g, mainRoot, null, 'HEAD', 200);                // a clone of a Loom repo: catch up on what landed without us

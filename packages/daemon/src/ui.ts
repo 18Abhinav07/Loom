@@ -13,11 +13,13 @@ export class Reply { constructor(public code: number, public body: unknown) {} }
 
 /** Spec §3.4: the dashboard port. Static UI, snapshot, SSE event stream. */
 export async function startUi(opts: { port: number; host?: string; bus: EventBus; runs: Map<string, Coordinator>; distDir: string;
-  extra?: (u: URL, req: IncomingMessage) => Promise<unknown | undefined>; serves?: (run: string) => boolean }) {
+  extra?: (u: URL, req: IncomingMessage) => Promise<unknown | undefined>; serves?: (run: string) => boolean;
+  raw?: (u: URL, req: IncomingMessage, res: ServerResponse) => Promise<boolean> }) {
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const json = (code: number, x: unknown) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(x)); };
     try {
       const u = new URL(req.url ?? '/', 'http://x');
+      if (await opts.raw?.(u, req, res)) return;   // a route that writes its own response (HTML, a streamed pass-through)
       const run = u.searchParams.get('run') ?? '';
       if (u.pathname === '/runs') return json(200, [...opts.runs.keys()]);
       if (run && opts.serves && !opts.serves(run)) return json(404, { error: 'run not served' });   // read-only: no reads of other graphs
