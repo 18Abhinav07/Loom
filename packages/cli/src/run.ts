@@ -4,6 +4,7 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync }
 import { join, resolve } from 'node:path';
 import type { Plan, PlanTask } from '@loom/planner';
 import { exclude, mergeHooks, pyDirs } from './loom.js';
+import { subscriptionEnv } from '@loom/core';
 
 export interface RunOpts {
   repo: string; plan: Plan; run?: string; model?: string; claudeBin?: string; url?: string; maxParallel?: number; resumeOnce?: boolean;
@@ -125,8 +126,7 @@ export async function runPlan(o: RunOpts): Promise<RunReport> {
     workers.set(t.id, { t, wt, branch, running: false, rep: { agent: t.id, task: t.id, exit: -1, resumed: 0 } });
   }
 
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  delete env.ANTHROPIC_API_KEY; delete env.ANTHROPIC_AUTH_TOKEN;   // the subscription login, never a paid key
+  const env = subscriptionEnv(process.env);   // the subscription login, never a paid key
 
   const claude = (w: Worker, prompt: string, resume?: string) => spawnClaude({ id: w.t.id, wt: w.wt, prompt, resume, rep: w.rep, runDir,
     model: o.model, claudeBin: o.claudeBin, env: o.blind ? env : { ...env, LOOM_RUN: run, LOOM_AGENT: w.t.id, LOOM_URL: url }, blind: o.blind });
