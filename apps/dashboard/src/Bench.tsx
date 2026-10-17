@@ -5,7 +5,7 @@ import { api, type Compare } from './api';
 import { getJson } from './stream';
 
 type J = Record<string, any>;
-const HIDDEN = /cost|usd|second|wall|elapsed|(^|\.)time|_s$/i;
+const HIDDEN = /^file$|cost|usd|second|wall|elapsed|(^|\.)time|_s$/i;
 const shown = (k: string) => !HIDDEN.test(k);
 const fmt = (v: unknown) => (typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(3)) : v == null ? '–' : typeof v === 'object' ? JSON.stringify(v) : String(v));
 
@@ -46,7 +46,8 @@ export function Bench() {
   if (err) return <p className="pad dim">{err}</p>;
   if (!b) return <p className="pad dim">loading…</p>;
   const pairs: J[] = b['e1-story']?.pairs ?? [];
-  const tot = cmp?.e5.reduce((a, s) => ({ l: a.l + s.loom.all_pass, b: a.b + s.blind.all_pass, n: a.n + s.loom.n }), { l: 0, b: 0, n: 0 });
+  const e1 = cmp?.e1?.blind && cmp.e1.loom ? cmp.e1 : null;
+  const tot = cmp?.e5?.length ? cmp.e5.reduce((a, s) => ({ l: a.l + s.loom.all_pass, b: a.b + s.blind.all_pass, n: a.n + s.loom.n }), { l: 0, b: 0, n: 0 }) : null;
   return (
     <div className="scroll pad">
       <h1>StaleBench</h1>
@@ -54,8 +55,10 @@ export function Bench() {
       {cmp && (
         <section className="card">
           <h3>E1 · Does a stale function break the other agent's work?</h3>
-          <Bar n={cmp.e1.blind.broke} of={cmp.e1.blind.n} tone="bad" text={`Without Loom ${cmp.e1.blind.broke}/${cmp.e1.blind.n} broke`} />
-          <Bar n={cmp.e1.loom.broke} of={cmp.e1.loom.n} tone="good" text={`With Loom ${cmp.e1.loom.broke}/${cmp.e1.loom.n}`} />
+          {e1 ? <>
+            <Bar n={e1.blind.broke} of={e1.blind.n} tone="bad" text={`Without Loom ${e1.blind.broke}/${e1.blind.n} broke`} />
+            <Bar n={e1.loom.broke} of={e1.loom.n} tone="good" text={`With Loom ${e1.loom.broke}/${e1.loom.n}`} />
+          </> : <p className="dim">E1 not run yet — <code>bench/regen.sh</code></p>}
           {pairs.length > 0 && (
             <div className="pairs">{pairs.map((p) => (
               <div key={p.id} className="pair" title={p.change}>
@@ -66,6 +69,7 @@ export function Bench() {
               <p className="dim">Each row: the function, how it changed, then without Loom, then with Loom.</p>
             </div>)}
         </section>)}
+      {cmp && !tot && <section className="card"><h3>E5 · Real agents on one repo</h3><p className="dim">Real agents: not run yet.</p></section>}
       {cmp && tot && (
         <section className="card">
           <h3>E5 · Real agents on one repo</h3>

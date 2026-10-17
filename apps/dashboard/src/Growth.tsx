@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api, couldNot } from './api';
 import { agentColor } from './stream';
 
 interface Cell { bucket: string; person: string; added: number; changed: number; removed: number }
@@ -7,8 +7,10 @@ const W = 36, GAP = 10, H = 180;
 
 /** One column per commit, stacked by person: how much of the code each of them added, changed or removed. */
 export function Growth() {
+  const [err, setErr] = useState('');
   const [rows, setRows] = useState<Cell[] | null>(null);
-  useEffect(() => { api<Cell[]>('/growth').then(setRows).catch(() => setRows([])); }, []);
+  useEffect(() => { api<Cell[]>('/growth').then(setRows).catch((e) => setErr(couldNot('history', e))); }, []);
+  if (err) return <p className="pad bad">{err}</p>;
   if (!rows) return <p className="pad dim">loading…</p>;
   if (!rows.length) return <p className="pad dim">No history yet. Growth appears as commits land.</p>;
   const buckets = [...new Set(rows.map((r) => r.bucket))];

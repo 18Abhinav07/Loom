@@ -6,6 +6,9 @@ export const repoCwd = (): Promise<string> =>
   (cwdP ??= new URLSearchParams(location.search).get('cwd') ? Promise.resolve(new URLSearchParams(location.search).get('cwd')!)
     : getJson<{ cwd: string }>('/ctx').then((c) => c.cwd).catch(() => ''));
 
+/** The line a screen shows when the daemon refused or is unreachable (never an empty state). */
+export const couldNot = (what: string, e: unknown) => `Could not load ${what}: ${(e as Error)?.message ?? e}`;
+
 /** GET a repo-scoped view: the cwd rides along as ?cwd=. */
 export async function api<T>(path: string): Promise<T> {
   return getJson<T>(`${path}${path.includes('?') ? '&' : '?'}cwd=${encodeURIComponent(await repoCwd())}`);

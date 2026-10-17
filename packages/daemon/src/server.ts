@@ -573,7 +573,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     : await startUi({ port: opts.uiPort ?? 4317, host: opts.host, bus, runs, distDir: opts.distDir ?? DIST, serves, raw: async (u, req, res) => {
       if (u.pathname !== '/lead' && !u.pathname.startsWith('/lead/api/')) return false;
       if (opts.readOnly) { res.writeHead(404, { 'content-type': 'application/json' }); res.end('{"error":"read-only: the lead page is local only"}'); }   // never hand out the token
-      else if (u.pathname === '/lead') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(leadPage(token)); }
+      else if (u.pathname === '/lead') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': "frame-ancestors 'self'" }); res.end(leadPage(token)); }
       else {
         const path = u.pathname.slice('/lead/api'.length);
         if (path === '/events' || path === '/sessions' || path.startsWith('/sessions/')) await passThrough(req, res, port, path, u.search);

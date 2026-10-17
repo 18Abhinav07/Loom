@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, post, type Collision, type Team, type TeamAgent } from './api';
+import { api, couldNot, post, type Collision, type Team, type TeamAgent } from './api';
 
 const LIVE = new Set(['working', 'starting', 'waiting', 'blocked']);
 
@@ -32,19 +32,24 @@ function AgentCard({ team, a, refresh }: { team: Team; a: TeamAgent; refresh: ()
 export function Teams() {
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [cols, setCols] = useState<Collision[]>([]);
+  const [err, setErr] = useState('');
+  const [pick, setPick] = useState('');
   const refresh = () => {
-    api<Team[]>('/teams').then(setTeams).catch(() => setTeams((t) => t ?? []));
+    api<Team[]>('/teams').then((t) => { setErr(''); setTeams(t); }).catch((e) => setErr(couldNot('teams', e)));
     api<Collision[]>('/collisions').then(setCols).catch(() => {});
   };
   useEffect(() => { refresh(); const t = setInterval(refresh, 2000); return () => clearInterval(t); }, []);
+  if (err) return <p className="pad bad">{err}</p>;
   if (!teams) return <p className="pad dim">loading…</p>;
-  const current = teams.find((t) => t.state === 'running') ?? teams[0];
+  const newest = [...teams].sort((a, b) => b.startedAt - a.startedAt);
+  const current = teams.find((t) => t.id === pick) ?? newest.find((t) => t.state === 'running') ?? newest[0];
   if (!current) return <p className="pad dim">No team running. Start one from Home or Plans.</p>;
   return (
     <div className="pad">
       <div className="row">
+        {teams.length > 1 && <select aria-label="team" value={current.id} onChange={(e) => setPick(e.target.value)}>{newest.map((t) => <option key={t.id} value={t.id}>{t.plan} · {t.state}</option>)}</select>}
         <h2>{current.plan}</h2><span className="state">{current.state}</span>
-        {current.state === 'running' && <button onClick={() => post(`/teams/${current.id}/stop`).then(refresh).catch(() => {})}>Stop team</button>}
+        {current.state === 'running' && <button onClick={() => post(`/teams/${current.id}/stop`).then(refresh).catch((e) => setErr(String(e.message ?? e)))}>Stop team</button>}
       </div>
       <p className="dim">{current.goal}</p>
       <div className="steps">{current.agents.map((a) => <AgentCard key={a.id} team={current} a={a} refresh={refresh} />)}</div>

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { api, type Collision } from './api';
+import { api, couldNot, type Collision } from './api';
 
 const KINDS = ['lock_denied', 'lock_wait', 'caller_warning', 'landing_rejected', 'merge_conflict', 'out_of_scope', 'divergence', 'stale_version'];
 
 export function Collisions() {
+  const [err, setErr] = useState('');
   const [rows, setRows] = useState<Collision[] | null>(null);
   const [kind, setKind] = useState('');
-  useEffect(() => { api<Collision[]>(`/collisions${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`).then(setRows).catch(() => setRows([])); }, [kind]);
+  useEffect(() => { api<Collision[]>(`/collisions${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`).then(setRows).catch((e) => setErr(couldNot('collisions', e))); }, [kind]);
+  if (err) return <p className="pad bad">{err}</p>;
   if (!rows) return <p className="pad dim">loading…</p>;
   return (
     <div className="pad">

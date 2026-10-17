@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api, couldNot } from './api';
 
 interface Row { sid: string; person: string; kind: string; parent: string | null; team: string | null; task: string | null; started: number; turns: number; handoff?: string }
 interface Detail extends Omit<Row, 'turns'> { turns: { from: string; text: string; at: number }[]; versions: { region: string; commit: string }[]; children: string[] }
@@ -7,8 +7,10 @@ export const when = (t: number) => (t ? new Date(t).toLocaleString() : '');
 
 export function Sessions() {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [err, setErr] = useState('');
   const [open, setOpen] = useState<Detail | null>(null);
-  useEffect(() => { api<Row[]>('/sessions').then(setRows).catch(() => setRows([])); }, []);
+  useEffect(() => { api<Row[]>('/sessions').then(setRows).catch((e) => setErr(couldNot('sessions', e))); }, []);
+  if (err) return <p className="pad bad">{err}</p>;
   if (!rows) return <p className="pad dim">loading…</p>;
   if (!rows.length) return <p className="pad dim">No sessions recorded yet. They appear once Claude has worked in this repo with Loom on.</p>;
   return (

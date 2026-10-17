@@ -19,7 +19,8 @@ export function Home({ go }: { go: Go }) {
     const poll = () => load<Team[]>('/teams', setTeams);
     poll(); const t = setInterval(poll, 4000); return () => clearInterval(t);
   }, []);
-  const e5 = cmp ? cmp.e5.reduce((a, s) => ({ l: a.l + s.loom.all_pass, b: a.b + s.blind.all_pass, n: a.n + s.loom.n }), { l: 0, b: 0, n: 0 }) : null;
+  const e5 = cmp?.e5?.length ? cmp.e5.reduce((a, s) => ({ l: a.l + s.loom.all_pass, b: a.b + s.blind.all_pass, n: a.n + s.loom.n }), { l: 0, b: 0, n: 0 }) : null;
+  const e1 = cmp?.e1?.blind && cmp.e1.loom ? cmp.e1 : null;
   const start = async () => {
     setMsg('');
     try { await post('/teams', { plan }); go('teams'); } catch (e) { setMsg((e as Error).message); }
@@ -42,11 +43,11 @@ export function Home({ go }: { go: Go }) {
         </div>
       </section>
 
-      {cmp && e5 && (
+      {cmp && e1 && (
         <section className="proof" onClick={() => go('bench')} role="link" tabIndex={0}>
-          <div className="stat bad">Without Loom {cmp.e1.blind.broke}/{cmp.e1.blind.n} broke</div>
-          <div className="stat good">With Loom {cmp.e1.loom.broke}/{cmp.e1.loom.n}</div>
-          <div className="stat">Real agents: Loom {e5.l}/{e5.n} · blind {e5.b}/{e5.n}</div>
+          <div className="stat bad">Without Loom {e1.blind.broke}/{e1.blind.n} broke</div>
+          <div className="stat good">With Loom {e1.loom.broke}/{e1.loom.n}</div>
+          <div className="stat">{e5 ? `Real agents: Loom ${e5.l}/${e5.n} · blind ${e5.b}/${e5.n}` : 'Real agents: not run yet'}</div>
           <a href="?view=bench" onClick={(e) => { e.preventDefault(); e.stopPropagation(); go('bench'); }}>See the benchmark →</a>
         </section>
       )}

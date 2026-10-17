@@ -1,20 +1,22 @@
 import { useEffect, useState } from 'react';
-import { api, post, type PlanRow } from './api';
+import { api, couldNot, post, type PlanRow } from './api';
 
 interface Detail { slug: string; plan: { goal: string; tasks: { id: string; title: string; after: string[]; owns: string[] }[] } | null; problems: string[] }
 interface Checked { ok: boolean; problems: string[]; warnings: string[] }
 
 export function Plans({ go }: { go: (v: string) => void }) {
+  const [err, setErr] = useState('');
   const [rows, setRows] = useState<PlanRow[] | null>(null);
   const [sel, setSel] = useState('');
   const [d, setD] = useState<Detail | null>(null);
   const [chk, setChk] = useState<Checked | null>(null);
   const [msg, setMsg] = useState('');
-  useEffect(() => { api<PlanRow[]>('/plans').then((r) => { setRows(r); setSel((s) => s || r[0]?.slug || ''); }).catch(() => setRows([])); }, []);
+  useEffect(() => { api<PlanRow[]>('/plans').then((r) => { setRows(r); setSel((s) => s || r[0]?.slug || ''); }).catch((e) => setErr(couldNot('plans', e))); }, []);
   useEffect(() => {
     setD(null); setChk(null); setMsg('');
     if (sel) api<Detail>(`/plans/${encodeURIComponent(sel)}`).then(setD).catch((e) => setMsg(String(e.message ?? e)));
   }, [sel]);
+  if (err) return <p className="pad bad">{err}</p>;
   if (!rows) return <p className="pad dim">loading…</p>;
   if (!rows.length) return <p className="pad dim">No plans yet. Ask the lead to write one, or add <code>.loom/plans/&lt;name&gt;.md</code>.</p>;
   const check = () => post<Checked>('/plans/check', { slug: sel }).then(setChk).catch((e) => setMsg(e.message));

@@ -30,3 +30,13 @@ test('/teams and /plans on the UI port reach the API routes', async () => {
   expect(await (await fetch(`http://127.0.0.1:${srv.uiPort}/teams${q}`, h)).json()).toEqual([]);
   expect(await (await fetch(`http://127.0.0.1:${srv.uiPort}/plans${q}`, h)).json()).toEqual([]);
 });
+
+test('/lead cannot be framed by another site', async () => {
+  const r = await fetch(`http://127.0.0.1:${srv.uiPort}/lead`);
+  expect(r.headers.get('content-security-policy')).toContain("frame-ancestors 'self'");
+});
+
+test('a cross-site POST to /teams on the UI port is refused before it reaches the API', async () => {
+  const r = await fetch(`http://127.0.0.1:${srv.uiPort}/teams`, { method: 'POST', headers: { origin: 'https://evil.example', 'content-type': 'application/json', 'x-loom-home': home }, body: JSON.stringify({ cwd: root, plan: 'x' }) });
+  expect(r.status).toBe(403);
+});

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api, couldNot } from './api';
 import { GraphView } from './GraphView';
 import { agentColor } from './stream';
 
@@ -7,9 +7,11 @@ interface Person { person: string; sessions: number; agents: number; regions: nu
 interface Collab { nodes: { person: string }[]; edges: { a: string; b: string; shared: number; collisions: number }[] }
 
 export function People() {
+  const [err, setErr] = useState('');
   const [people, setPeople] = useState<Person[] | null>(null);
   const [collab, setCollab] = useState<Collab>({ nodes: [], edges: [] });
-  useEffect(() => { api<Person[]>('/people').then(setPeople).catch(() => setPeople([])); api<Collab>('/collab').then(setCollab).catch(() => {}); }, []);
+  useEffect(() => { api<Person[]>('/people').then(setPeople).catch((e) => setErr(couldNot('people', e))); api<Collab>('/collab').then(setCollab).catch(() => {}); }, []);
+  if (err) return <p className="pad bad">{err}</p>;
   if (!people) return <p className="pad dim">loading…</p>;
   if (!people.length) return <p className="pad dim">No people yet. Everyone who works in this repo with Loom on shows up here.</p>;
   return (
