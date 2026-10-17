@@ -635,3 +635,12 @@ button.stc:hover{border-color:var(--ink3)}
 .ptile b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv{font-weight:600}.pv.bad{color:#B3402F}.pv.good{color:#2E7D4F}
 .tw{overflow-x:auto}
 @media (max-width:640px){.bhero{grid-template-columns:1fr}.stcs{grid-template-columns:1fr}}
+
+/* agent messages */
+.side{display:flex;flex-direction:column;gap:16px;min-width:0}
+.msgs{padding:16px 18px;margin:0;max-height:420px;overflow:auto}.msgs .expl{padding:2px 0 8px}
+.msg{border:1px solid var(--line2);border-radius:12px;padding:9px 12px;margin-top:8px;background:#FDFCFA;min-width:0}
+.mh{display:flex;align-items:center;gap:6px;font-size:13px;flex-wrap:wrap}.mh .arrow{color:var(--ink3)}
+.mst{margin-left:auto;font-size:11px;padding:1px 8px;border-radius:99px;background:var(--wait-soft);color:#8A6A0E}.mst.resolved{background:#E4F2E9;color:#2E7D4F}.mst.delivered{background:#E6EDF8;color:#2F5FA8}
+.msg pre{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px var(--mono);color:var(--ink2)}
+.ev{font-size:12.5px;padding:2px 0;overflow-wrap:anywhere}

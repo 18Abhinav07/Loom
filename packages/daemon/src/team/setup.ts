@@ -38,7 +38,10 @@ export function mergeHooks(sp: string, hookCmd: string) {
   s.hooks ??= {};
   for (const [ev, matcher] of EVENTS) {
     const list: { matcher?: string; hooks: { command?: string }[] }[] = (s.hooks[ev] ??= []);
-    if (list.some((h) => h.hooks?.some((x) => x.command?.includes('loom-hook')))) continue;
+    const ours = (h: { hooks: { command?: string }[] }) => h.hooks?.some((x) => x.command?.includes('loom-hook'));
+    const want = `${hookCmd} claude ${ev}`;
+    if (list.some((h) => h.hooks?.some((x) => x.command === want))) continue;
+    for (let i = list.length - 1; i >= 0; i--) if (ours(list[i])) list.splice(i, 1);   // a stale loom-hook (old install path) is replaced, not kept beside the new one
     list.push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: `${hookCmd} claude ${ev}`, timeout: 30 } as never] });
   }
   mkdirSync(dirname(sp), { recursive: true });

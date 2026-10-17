@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { regionMerge } from '../src/regions/index.js';
 import { writeResult } from './lib.js';
 
-const RUNS = join(homedir(), 'Documents/loom/bench/runs/e5/team-1/repos');
+const RUNS = join(homedir(), 'Documents/loom-v2/bench/results/e5/team-1/repos');
 const g = (cwd: string, ...a: string[]) => execFileSync('git', ['-C', cwd, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const tryG = (cwd: string, ...a: string[]) => { try { return { ok: true, out: g(cwd, ...a) }; } catch (e: any) { return { ok: false, out: String(e.stdout ?? '') }; } };
 

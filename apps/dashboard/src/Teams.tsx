@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, couldNot, post, type Collision, type Team, type TeamAgent } from './api';
-import { agentColor, useRun, type Snapshot } from './stream';
+import { agentColor, useRun, type LoomEvent, type Snapshot } from './stream';
 import { ago, filesText, landText, startedBy } from './explain';
 import { Bot, Problem } from './ui';
 
@@ -198,6 +198,30 @@ function Drawer({ team, a, snap, cols, onClose, refresh }: { team: Team; a: Team
     </>);
 }
 
+
+// ---- agent-to-agent messages: what one agent's change told another, as stored in the FalkorDB graph --------------------------
+const EVL: Record<string, string> = {
+  'notice.created': 'told', 'notice.delivered': 'delivered to', 'notice.resolved': 'resolved by', 'lease.granted': 'locked', 'lease.denied': 'was refused', 'lease.released': 'released',
+};
+function Messages({ snap, events }: { snap: Snapshot; events: LoomEvent[] }) {
+  const notices = [...snap.notices].reverse();
+  const flow = events.filter((e) => EVL[e.type]).slice(-12).reverse();
+  const sym = (q: string) => nice(snap.nodes.find((n) => n.id === q)?.qname ?? q);
+  return (
+    <div className="card sp reveal msgs">
+      <div className="h">Agent messages <span className="chipr" style={{ '--c': 'var(--accent)' } as never}>FalkorDB</span></div>
+      <div className="expl">When one agent changes code another depends on, Loom writes a notice into the shared graph and delivers it to the other agent before it finishes.</div>
+      {!notices.length && !flow.length && <div className="emptyfeed">No messages yet. They appear when one agent changes a function another agent calls.</div>}
+      {notices.map((n) => (
+        <div key={n.id} className={`msg ${n.status}`}>
+          <div className="mh"><b>{n.author || 'an agent'}</b><span className="arrow">→</span><b>{n.agent}</b><span className={`mst ${n.status}`}>{n.status}</span></div>
+          {n.text && <pre>{n.text.length > 420 ? n.text.slice(0, 420) + '…' : n.text}</pre>}
+        </div>))}
+      {flow.length > 0 && <div className="flow"><div className="dim" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', margin: '10px 0 4px' }}>Event stream</div>
+        {flow.map((e, i) => <div key={i} className="ev"><span className="dim">{ago(e.at)}</span> <b>{e.agent ?? 'loom'}</b> {EVL[e.type]}{(e.data?.symbols as string[] | undefined)?.length ? <> <code>{(e.data.symbols as string[]).map(sym).join(', ')}</code></> : null}</div>)}</div>}
+    </div>);
+}
+
 // ---- the screen ------------------------------------------------------------------------------------------------------------------
 export function Teams({ go }: { go?: (v: string) => void }) {
   const [raw, setTeams] = useState<Team[] | null>(null);
@@ -311,12 +335,15 @@ export function Teams({ go }: { go?: (v: string) => void }) {
             {current.result && <div className="expl" style={{ marginTop: 10, paddingBottom: 8 }}>Final tests on the shared branch: <b style={{ color: current.result.pass ? 'var(--good)' : 'var(--bad)' }}>{current.result.pass ? 'pass' : 'fail'}</b>{!current.result.pass && <pre className="term" style={{ whiteSpace: 'pre-wrap', maxHeight: 120, overflow: 'auto', marginTop: 6 }}>{current.result.out.slice(-600)}</pre>}</div>}
           </div>
         </div>
+        <div className="side">
+        {!current.blind && <Messages snap={snap} events={run.events} />}
         <div className="card feed reveal">
           <div className="h">What Loom just did</div>
           <div className="expl">Newest first. Click one to see it on the code.</div>
           <div className="moves">{!feed.length ? <div className="emptyfeed">{current.blind ? 'Without Loom there is nothing to report: nobody is watching.' : 'Nothing yet. Locks, warnings and send-backs show up here as they happen.'}</div>
             : feed.map((c) => { const [k, ico, label] = KIND[c.kind] ?? ['notice', '✉️', c.kind]; return (
               <div key={c.id} className="mv" style={{ '--kc': KC[k] } as never} onClick={() => go?.('functions')}><div className="t"><span className="ico">{ico}</span><span>{label}</span></div><p>{filesText(c.region)} · {c.outcome}</p>{c.detail && <p>{c.detail}</p>}</div>); })}</div>
+        </div>
         </div>
       </div>
       <Drawer team={current} a={agents.find((a) => a.id === open)} snap={snap} cols={cols} onClose={() => setOpen('')} refresh={refresh} />
