@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from './api';
+import { api, post } from './api';
 
 interface Hit { id: string; path: string | null }
 interface Story { id: string; path: string; versions: { id: string; by: string | null; task: string | null; decision: string | null; commit: string | null; at: number }[]; collisions: { id: string; kind: string }[] }
@@ -10,13 +10,28 @@ const fileOf = (p: string) => p.split('/').pop() ?? p;
 const fnName = (id: string) => id.split('::')[1] ?? id;
 
 /** The repo as tiles: one per file, grouped by folder, sized by how many functions it holds. Open a file to see its functions. */
-export function Functions() {
+interface Snap { nodes: { id: string; file: string; qname: string; kind: string }[] }
+/** Demo mode: the code the recorded run worked on, read from the replay's own snapshot. */
+async function demoHits(): Promise<Hit[]> {
+  const runs = await api<string[]>('/runs').catch(() => [] as string[]);
+  let run = runs.filter((r) => r.startsWith('coord:replay')).pop();
+  if (!run) run = (await post<{ run: string }>('/demo/replay', { speed: 3, maxGapMs: 1200 })).run;
+  for (let i = 0; i < 20; i++) {
+    const snap = await api<Snap>(`/snapshot?run=${encodeURIComponent(run)}`);
+    const fns = snap.nodes.filter((n) => n.kind === 'function');
+    if (fns.length) return fns.map((n) => ({ id: `${n.file}::${n.qname}::definition#0`, path: n.file }));
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return [];
+}
+
+export function Functions({ demo = false }: { demo?: boolean }) {
   const [all, setAll] = useState<Hit[] | null>(null);
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'name' | 'size'>('name');
   const [open, setOpen] = useState<string | null>(null);
   const [story, setStory] = useState<Story | null>(null);
-  useEffect(() => { api<Hit[]>('/regions?q=::definition&limit=5000').then(setAll).catch(() => setAll([])); }, []);
+  useEffect(() => { setAll(null); (demo ? demoHits() : api<Hit[]>('/regions?q=::definition&limit=5000')).then(setAll).catch(() => setAll([])); }, [demo]);
 
   const files = useMemo(() => {
     const m = new Map<string, Fn[]>();
@@ -74,9 +89,10 @@ export function Functions() {
             {!open ? <div className="empty">Open a file to see its functions.</div> : (
               <>
                 <div className="fhead">{open}</div>
+                {demo && <p className="dim">Recorded run: function history is only kept for real repos.</p>}
                 <div className="rlist">
                   {fns.filter((f) => !needle || f.name.toLowerCase().includes(needle) || open.toLowerCase().includes(needle)).map((f) => (
-                    <button key={f.id} className="listbtn" onClick={() => api<Story>(`/regions/${encodeURIComponent(f.id)}`).then(setStory).catch(() => {})}>{f.name}</button>))}
+                    <button key={f.id} className="listbtn" onClick={() => { if (!demo) api<Story>(`/regions/${encodeURIComponent(f.id)}`).then(setStory).catch(() => {}); }}>{f.name}</button>))}
                 </div>
                 {story && (
                   <div style={{ marginTop: 14 }}>

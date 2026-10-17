@@ -34,7 +34,7 @@ export function demoModel(st: RunState): DemoModel {
   const files: DemoModel['files'] = [];
   for (const [sym, r] of rows) { const f = dir(fileOf(sym)); let g = files.find((x) => x.file === f); if (!g) files.push(g = { file: f, rows: [] }); g.rows.push({ name: r.name, holder: r.holder, waiter: r.waiter }); }
   const cap = [...events].reverse().find((e) => ['lease.denied', 'notice.created', 'change.landed', 'lease.granted'].includes(e.type));
-  const caption = !cap ? 'Waiting for the team to start.'
+  const caption = !cap ? 'Starting the recorded run…'
     : cap.type === 'lease.denied' ? `${cap.agent} needs ${fn(symsOf(cap)[0])}, which ${cap.data.holder} holds. ${cap.agent} waits its turn instead of colliding.`
     : cap.type === 'notice.created' ? `${cap.data.author} changed ${fn(cap.data.symbol)}. ${cap.agent} calls it, so ${cap.agent} is told.`
     : cap.type === 'change.landed' ? `${cap.agent}'s work merged, every call still fits, tests pass: it landed on the shared branch.`
@@ -45,7 +45,7 @@ export function demoModel(st: RunState): DemoModel {
 export function DemoStage() {
   const [run, setRun] = useState<string | null>(null);
   const [err, setErr] = useState('');
-  const start = () => { setRun(null); setErr(''); post<{ run: string }>('/demo/replay', { speed: 1.5 }).then((r) => setRun(r.run)).catch((e) => setErr((e as Error).message)); };
+  const start = () => { setRun(null); setErr(''); post<{ run: string }>('/demo/replay', { speed: 3, maxGapMs: 1200 }).then((r) => setRun(r.run)).catch((e) => setErr((e as Error).message)); };
   useEffect(start, []);
   return <RunStage run={run} label="demo · recorded run" err={err ? `Could not start the demo: ${err}` : ''} onReplay={start} />;
 }

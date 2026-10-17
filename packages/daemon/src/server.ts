@@ -259,7 +259,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
           if (!r.ok) throw new Error(`${r.status} ${out.slice(0, 200)}`);
           if (route.startsWith('/mcp/') && JSON.parse(out).ok === false) throw new Error(JSON.parse(out).error);
         };
-        const job = replay(dir, run, self, { speed: b.speed === undefined ? undefined : Number(b.speed), progress: p })
+        const job = replay(dir, run, self, { speed: b.speed === undefined ? undefined : Number(b.speed), maxGapMs: b.maxGapMs === undefined ? undefined : Number(b.maxGapMs), progress: p })
           .catch((e) => { p.failed.push(String((e as Error).message ?? e)); p.done = true; return p; });
         return send(200, b.wait ? await job : p);
       }

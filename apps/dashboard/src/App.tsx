@@ -72,12 +72,12 @@ export function App() {
         <button className="btn or" onClick={newTeam}>+ New team</button>
       </header>
       <main>
-        {demo && view !== 'home' && <div className="card sp" style={{ marginBottom: 14 }}><b>Demo is on.</b> Home plays a recorded run on a different codebase. This screen shows the real data of <b>{base(cwd) || 'this repo'}</b>, which is why the agents differ. <button className="btn ghost sm" onClick={() => setDemo(false)}>Exit demo</button></div>}
+        {demo && view !== 'home' && view !== 'functions' && <div className="card sp" style={{ marginBottom: 14 }}><b>Demo is on.</b> Home plays a recorded run on a different codebase. This screen shows the real data of <b>{base(cwd) || 'this repo'}</b>, which is why the agents differ. <button className="btn ghost sm" onClick={() => setDemo(false)}>Exit demo</button></div>}
         {tab.views.length > 1 && (
           <div className="subtabs">{tab.views.map((v) => <button key={v} className={`chip ${v === view ? 'on' : ''}`} onClick={() => setView(v)}>{SUB[v]}</button>)}</div>)}
         {view === 'home' ? <Home go={go} demo={demo} /> : view === 'bench' ? <Bench /> : view === 'lead' ? <Lead say={say} /> : view === 'plans' ? <Plans go={go} />
           : view === 'teams' ? <Teams go={go} /> : view === 'sessions' ? <Sessions /> : view === 'people' ? <People /> : view === 'collisions' ? <Collisions />
-          : view === 'functions' ? <Functions /> : <Growth />}
+          : view === 'functions' ? <Functions demo={demo} /> : <Growth />}
       </main>
     </>
   );
