@@ -17,6 +17,7 @@ export interface LiveAgent { id: string; person: string; worktree: string; top: 
 type Row = LiveAgent & { syncPending: boolean };
 type Kind = 'contract' | 'body' | 'removed';
 type Decision = { allow: true; context?: string } | { allow: false; reason: string };
+import type { CollisionIn } from '../team/collide.js';
 export interface LiveOpts { now?: () => number; backoffMs?: number; stale?: typeof staleRegions }
 
 const BACKOFF_DENIALS = 3;
@@ -35,6 +36,9 @@ export class Live {
   private readonly parsed = new Map<string, FileRegions>();   // agent|file → that text, regionized: the next diff's before side
   private readonly seen = new Map<string, Map<string, string>>(); // agent → file → blob it last saw
   private seq = 0;
+  /** Set by LiveRoutes for a run: parties name agents, the team fills in people and sessions. */
+  onCollision?: (c: CollisionIn) => void;
+  private party = (agent: string) => ({ person: '', session: agent, agent });
 
   constructor(private readonly g: LoomGraph, o: LiveOpts = {}) {
     this.now = o.now ?? Date.now;
@@ -126,6 +130,8 @@ export class Live {
     const hs = await holders(this.g, agent, ids, t.mode, now);
     await this.g.query(`MATCH (b:Agent {id: $agent}) UNWIND $ids AS id MATCH (r:Region {id: id}) MERGE (b)-[w:WAITS_ON]->(r) SET w.at = $now`,
       { agent, ids: [...new Set(hs.map((h) => h.symbol))], now });
+    for (const h of hs) this.onCollision?.({ kind: 'lock_denied', region: [h.symbol], parties: [this.party(agent), this.party(h.holder)], outcome: 'rejected',
+      detail: `${agent} was refused ${this.qn(meta, h.symbol)}, held by ${h.holder}` });
     let tripped: { region: string; holder: string } | null = null;
     for (const h of hs) {
       const k = `${agent}|${h.symbol}`;
@@ -250,6 +256,8 @@ export class Live {
     for (const b of busy) {
       await this.g.query(`MERGE (n:Notice {agent: $me, author: $holder, region: $region, kind: 'contract_use', status: 'pending'})
         ON CREATE SET n.id = $id, n.at = $now, n.score = 0.9`, { me: a.id, holder: b.holder, region: b.region, id: ulid(now), now });
+      this.onCollision?.({ kind: 'caller_warning', region: [b.region], parties: [this.party(a.id), this.party(b.holder)], outcome: 'open',
+        detail: `${a.id} wrote a call to ${b.region}, which ${b.holder} is re-signing` });
       n += 1 + await this.newCaller(b.holder, a.id, b.region, fresh.filter((e) => e.to === b.region).map((e) => e.from), now);
     }
     return n;
@@ -366,12 +374,14 @@ export class Live {
   private async wake(holder: string, regions: string[], why: 'landed' | 'lapsed'): Promise<string[]> {
     if (!regions.length) return [];
     const now = this.now();
-    const ws = await this.g.query<{ b: string; region: string }>(`MATCH (b:Agent)-[w:WAITS_ON]->(r:Region) WHERE r.id IN $regions AND b.id <> $holder
-      DELETE w RETURN b.id AS b, r.id AS region`, { regions, holder });
+    const ws = await this.g.query<{ b: string; region: string; at: number | null }>(`MATCH (b:Agent)-[w:WAITS_ON]->(r:Region) WHERE r.id IN $regions AND b.id <> $holder
+      WITH b, r, w, w.at AS at DELETE w RETURN b.id AS b, r.id AS region, at`, { regions, holder });
     for (const w of ws) {
       await this.g.query(`CREATE (:Notice {id: $id, agent: $b, author: $holder, region: $region, kind: 'wake', why: $why, score: 1.0, status: 'pending', at: $now})`,
         { id: ulid(now), b: w.b, holder, region: w.region, why, now });
       this.blocked.delete(`${w.b}|${w.region}`); this.denials.delete(`${w.b}|${w.region}`);
+      this.onCollision?.({ kind: 'lock_wait', region: [w.region], parties: [this.party(w.b), this.party(holder)], outcome: 'waited',
+        waited_ms: w.at == null ? 0 : Math.max(0, now - w.at), version: `${holder}@${now}`, detail: `${w.b} waited for ${holder} (${why})` });
     }
     return [...new Set(ws.map((w) => w.b))];
   }

@@ -10,6 +10,7 @@ import { handover } from '../live/handover.js';
 import type { LandResult } from '../live/queue.js';
 import type { LiveRoutes } from '../live/routes.js';
 import { AgentProc, type AgentState } from './agent.js';
+import { writeCollision, type CollisionIn } from './collide.js';
 import { allowedTools, MAX_RESUMES, SUFFIX_TEAM } from './prompt.js';
 import { exclude, mergeHooks, pyDirs } from './setup.js';
 
@@ -19,7 +20,7 @@ export interface TeamView { id: string; plan: string; goal: string; repo: string
   landed: string; state: 'running' | 'done' | 'stopped'; agents: TeamAgentView[]; startedAt: number }
 export interface TeamDeps { routes: LiveRoutes; bin?: string; url?: string; hookCmd?: string; mcpPath?: string; pollMs?: number;
   onAgentEvent?(team: string, agent: string, text: string): void;
-  onCollision?(team: string, c: unknown): void }
+  onCollision?(team: string, c: CollisionIn): void }
 
 interface A { t: TeamTask; state: AgentState; sid: string; wt: string; branch: string; lands: string[]; resumed: number; lastReply?: string;
   proc?: AgentProc; sessionId?: string }
@@ -70,6 +71,8 @@ export class Team {
     exclude(repo, ['.loom/']);
     this.landed = `loom/${this.id8}/landed`;
     git(repo, 'branch', this.landed, base);
+    const prev = this.d.routes.onCollision;
+    this.d.routes.onCollision = (run, c) => (run === this.id ? this.collide(c) : prev?.(run, c));
     await this.d.routes.addRun({ run: this.id, repo, landed: this.landed, dirs: cfg.dirs ?? pyDirs(repo), test: this.test, compile: this.compile });
     this.team('started', undefined, `${plan.tasks.length} tasks`);
     for (const t of plan.tasks) {
@@ -119,6 +122,14 @@ export class Team {
     });
     p.start();
     this.team('agent_started', a.t.id);
+  }
+
+  /** The Live layer names agents; the team knows their people and sessions. */
+  private collide(c: CollisionIn) {
+    const parties = c.parties.map((p) => { const a = this.agents.get(p.agent ?? ''); return a ? { person: this.o.person, session: a.sid, agent: a.t.id } : p; });
+    const full = { ...c, parties };
+    writeCollision(this.o.repo, this.id, full);
+    this.d.onCollision?.(this.id, full);
   }
 
   private async settle() {
@@ -179,7 +190,6 @@ export class Team {
       return void this.settle();
     }
     this.team('agent_rejected', a.t.id, r.status);
-    this.d.onCollision?.(this.id, { agent: a.t.id, result: r });
     // only another agent's landing can supply a callee that is missing: wait for one instead of resuming to no end
     if (r.status === 'contract_break' && r.missing && [...this.agents.values()].some((x) => x !== a && (x.state === 'running' || x.state === 'pending'))) {
       this.parked.set(a, r.tail); return;
