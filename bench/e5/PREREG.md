@@ -47,3 +47,12 @@ found by those real-agent runs and covered by a test that failed first:
 - 5a6cb6e: a worker whose landing only missed a callee another agent had not landed yet was resumed to no end (x1 loom r0).
 Loom changed, so by the rule above all of those runs are **discarded** (kept on disk, reported as pre-fix evidence, not counted).
 Counted now: t1_slugpath and x1_textlist, 3 reps per arm, plus f1_oldcall under its own pass condition, all on this build.
+
+## Addendum 3 — daemon-owned teams (build recorded at the counted run)
+
+Loom v2 replaced the v1 run-then-merge flow: `loom run --plan` now starts a daemon-owned team (agents land on a shared `landed` branch as they finish, hooks and collision checks live). Counted runs are made on that build, recorded as `<sha>` in the run's `records.jsonl` header before the first run.
+
+- Scenarios unchanged: `t1_slugpath`, `x1_textlist`, `f1_oldcall`, now fed from plan files (`bench/plans/*.md`, generated from `scenarios.py` by `e5/plans.py`) to both arms; `--blind` is the same team without hooks or Loom tools.
+- 3 reps per arm. Scoring unchanged: each agent's check on the final tree, the integration check, the plan's test run on the landed branch.
+- Results from earlier builds are kept and labelled `build 5a6cb6e`; they are not pooled with these.
+- Any Loom change after counted runs begin discards them (rule above); a re-run needs a further addendum.
