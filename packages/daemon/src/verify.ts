@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import type { LoomGraph } from '@loom/core';
 import { applyMutant, indexPython, mutants } from '@loom/indexer';
+import { subscriptionEnv } from '@loom/core';
 
 export interface TestCfg { command: string; label: string; root: string; timeoutS?: number }
 export interface TestSym { id: string; file: string; qname: string; label: string }
@@ -76,7 +77,7 @@ export async function writeExercises(g: LoomGraph, map: Map<string, TestSym[]>) 
 /** The configured command with `{labels}`, in its own process group so a timeout kills the whole tree. */
 export function runTests(cwd: string, cfg: TestCfg, labels: string[]): Promise<{ ok: boolean; tail: string; ms: number }> {
   const t0 = Date.now();
-  const env: NodeJS.ProcessEnv = { ...process.env, PYTHONDONTWRITEBYTECODE: '1' }; delete env.ANTHROPIC_API_KEY; delete env.ANTHROPIC_AUTH_TOKEN;
+  const env: NodeJS.ProcessEnv = { ...subscriptionEnv(process.env), PYTHONDONTWRITEBYTECODE: '1' };
   return new Promise((done) => {
     const p = spawn('sh', ['-c', cfg.command.replace('{labels}', labels.join(' '))], { cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let tail = ''; let timedOut = false;

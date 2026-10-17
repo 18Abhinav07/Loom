@@ -5,14 +5,14 @@ import { diffRegions, gitBlobSha, parseLock, regionize, serializeLock, toLockEnt
 import { appendEvent, sessionFile } from './events.js';
 import { git, gitTry, showRaw } from './git.js';
 import { importSessions } from './importer.js';
-import { readActive } from './session.js';
+import { activeSession, ancestors } from './session.js';
 import { currentVersion } from './versions.js';
 
 const show = showRaw;
 
 /** §6.2 step 5: parse the staged (index) text of each staged file, write a version event per changed region, rewrite the lock, stage both. */
 export async function preCommit(root: string, g: LoomGraph | null): Promise<{ versions: number }> {
-  const act = readActive(root); if (!act) return { versions: 0 };
+  const act = activeSession(root, null, ancestors()); if (!act) return { versions: 0 };   // two terminals: the one this commit runs under
   const staged = git(root, 'diff', '--cached', '--name-only', '-z', '--diff-filter=ACMRD').split('\0').filter((f) => f && !f.startsWith('.loom/'));
   const lockPath = join(root, '.loom', 'regions.lock');
   const lock: Map<string, LockEntry[]> = existsSync(lockPath) ? parseLock(readFileSync(lockPath, 'utf8')) : new Map();

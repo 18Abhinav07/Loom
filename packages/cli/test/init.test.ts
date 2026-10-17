@@ -31,6 +31,7 @@ test('loom init writes config once, merges hooks without clobbering, is idempote
   expect(cfg).toMatchObject({ run: `coord:local:${basename(repo)}`, dirs: ['pkg'], daemon: 'http://127.0.0.1:4318', repoId: repoId(repo) });   // v1 keys kept until P3
   const s = JSON.parse(readFileSync(join(repo, '.claude/settings.local.json'), 'utf8'));
   expect(s.permissions).toEqual({ allow: ['Bash(ls)'] });
+  expect(s.enabledMcpjsonServers).toEqual(['loom']);   // pre-approved: claude's own prompt defaults to "continue without", which leaves the lead with no channel
   expect(s.hooks.Stop.flatMap((h: any) => h.hooks.map((x: any) => x.command))).toEqual(['echo mine', 'node /x/loom-hook.cjs claude Stop']);
   expect(s.hooks.PreToolUse[0].matcher).toBe('Edit|Write|MultiEdit|NotebookEdit|Bash');
   expect(readFileSync(join(repo, '.git/info/exclude'), 'utf8')).not.toMatch(/^\.loom\/$/m);   // v2: .loom/ records travel through git

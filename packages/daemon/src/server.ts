@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { LoomDb, type FileIndex } from '@loom/core';
+import { LoomDb, type FileIndex, type LoomGraph } from '@loom/core';
 import { contextJson, denyJson, parsePostToolUse, parsePreToolUse, stopBlockJson, type ClaudeHookInput } from './claude.js';
 import { resolveAttach } from './attach.js';
 import { Coordinator } from './coordinator.js';
@@ -13,14 +13,20 @@ import { mergeCheck, UnknownSide } from './mergecheck.js';
 import { cfgFor } from './verify.js';
 import { EventBus, Recorder } from './events.js';
 import { TraceWriter } from './trace.js';
+import { leadPage, passThrough } from './leadpage.js';
+import { localOnly } from './guard.js';
 import { Reply, startUi } from './ui.js';
 import { BenchRun, type BenchRunner } from './benchrun.js';
-import { llmPlan, partition, scope, validatePlan, type PlanTask } from '@loom/planner';
+import { checkTeamPlan, listPlans, parseTeamPlan, partition, scope, validatePlan, type PlanTask } from '@loom/planner';
 import { renderWhy, why } from './why.js';
 import { filePatch, replay, type ReplayProgress } from './replay.js';
 import { resolveRepo } from './repo.js';
 import { LiveRoutes } from './live/routes.js';
-import { finishSession, gitTry, lessonsFor, startSession } from '@loom/memory';
+import { activeSession, finishSession, gitTry, lessonsFor, sessionBriefing, startSession } from '@loom/memory';
+import { Bus } from './bus.js';
+import { Mirror } from './mirror.js';
+import { Channels } from './channels.js';
+import { authorized, machineToken } from './token.js';
 
 const PY_PATH = /[\w./-]+\.py\b/g;
 
@@ -45,7 +51,9 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   /** Spec §4.4 deployed mode: every write route refuses except /replay of a recording under `replayRoots`. */
   readOnly?: boolean; tenant?: string; replayRoots?: string[]; host?: string;
   /** Story's launcher and showcase: the bench dir it runs E1 in, how it spawns, the recording "Watch 3 real agents" replays. */
-  benchRoot?: string; benchRunner?: BenchRunner; demoRun?: string }) {
+  benchRoot?: string; benchRunner?: BenchRunner; demoRun?: string;
+  /** The Loom home holding `token` (B3); tests pass a tmp dir. Default LOOM_HOME, else ~/.loom. */
+  home?: string }) {
   /** C1 fixed: a run's lessons live in that run's own graph; no graph is shared between runs or tenants. P3 moves runs into the repo graph. */
   const lessonsOf = (run: string) => new Lessons(opts.db.graph(run));
   const runs = new Map<string, Coordinator>();
@@ -59,6 +67,23 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   };
   const bus = new EventBus();
   const live = new LiveRoutes(opts.db);
+  const loomHome = opts.home ?? process.env.LOOM_HOME ?? join(homedir(), '.loom');
+  const token = machineToken(loomHome);
+  const leadBus = new Bus();
+  const mirror = new Mirror(leadBus, async (cwd, claude) => {   // a session that started before this daemon did
+    const repo = await resolveRepo(opts.db, cwd, opts.home);
+    const a = repo ? activeSession(repo.top, claude) : null;
+    return repo && a ? { claude, sid: a.sid, writer: a.writer, person: gitTry(repo.top, 'config', 'user.email') ?? 'unknown', repo: repo.top } : null;
+  });
+  const channels = new Channels(leadBus, mirror, join(loomHome, 'held'));
+  /** A channel registering after a daemon restart: find the session whose SessionStart recorded this claude pid, and bind it now. */
+  const rebind = async (cwd: string, pid: number) => {
+    const repo = cwd ? await resolveRepo(opts.db, cwd, opts.home) : null;
+    const a = repo ? activeSession(repo.top, null, [pid]) : null;
+    if (!a?.claude || !a.pids?.includes(pid)) return;
+    if (await mirror.get(cwd, a.claude)) channels.bind(a.claude, [pid]);
+  };
+  const ppidsOf = (h: IncomingMessage['headers']) => String(h['x-loom-ppids'] ?? '').split(',').map(Number).filter((n) => n > 1);
   const recorder = new Recorder(opts.recordDir ?? join(homedir(), '.loom', 'runs'));
   const record = (run: string, route: string, b: unknown) => {
     try { recorder.record(run, route, b); } catch (e) { console.error(`[loom] record failed: ${String(e)}`); }
@@ -154,9 +179,59 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       res.end(typeof payload === 'string' ? payload : JSON.stringify(payload));
     };
     try {
+      const refused = opts.readOnly ? null : localOnly(req);   // the deployed read-only daemon answers its public name
+      if (refused) return send(403, { error: refused });
       const u = new URL(req.url ?? '/', 'http://x');
       const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
       if (req.method === 'GET' && u.pathname === '/health') return send(200, { ok: true, runs: runs.size, readOnly: Boolean(opts.readOnly), pid: process.pid });
+      if (parts[0] === 'events' || parts[0] === 'sessions' || parts[0] === 'channels') {   // B3: the lead/session surface; machine token required
+        if (!authorized(req, token)) return send(401, { error: 'token required: x-loom-token or ?token= (see ~/.loom/token)' });
+        if (req.method === 'GET' && parts[0] === 'events' && parts.length === 1) {
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
+          const out = (e: unknown) => { if (!res.writableEnded && !res.destroyed) res.write(`data: ${JSON.stringify(e)}\n\n`); };
+          const since = u.searchParams.has('since') ? Number(u.searchParams.get('since')) : leadBus.last;
+          for (const e of leadBus.since(since)) out(e);
+          res.write(': ok\n\n');
+          const off = leadBus.subscribe(out);
+          const ping = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, 15_000); ping.unref();
+          req.on('close', () => { off(); clearInterval(ping); });
+          return;
+        }
+        if (parts[0] === 'channels') {   // loom-mcp's push port registers here; its pid is the claude pid
+          if (req.method === 'GET' && parts.length === 2) return channels.known(Number(parts[1])) ? send(200, { ok: true }) : send(404, { error: 'unknown channel' });
+          const b = await body(req);
+          if (req.method === 'POST' && parts.length === 1) {
+            if (!(Number(b.pid) > 1 && Number(b.port) > 0 && /^[0-9a-f]{32}$/.test(String(b.secret)))) return send(400, { error: 'need {pid, port, secret, cwd}' });
+            channels.register({ pid: Number(b.pid), port: Number(b.port), secret: String(b.secret), cwd: String(b.cwd ?? '') });
+            await rebind(String(b.cwd ?? ''), Number(b.pid)).catch((e) => console.error(`[loom] channel rebind: ${String(e)}`));
+            return send(200, { ok: true });
+          }
+          if (req.method === 'POST' && parts[1] === 'permission') {
+            const l = channels.permission(Number(b.pid), b);
+            return l ? send(200, { ok: true, sid: l.sid }) : send(404, { error: 'no session bound to that channel' });
+          }
+        }
+        if (req.method === 'POST' && parts[0] === 'sessions' && parts.length >= 3) {
+          const l = mirror.bySid(parts[1]);
+          if (!l) return send(404, { error: 'no live session with that id' });
+          const b = await body(req);
+          if (parts[2] === 'messages' && parts.length === 3) {
+            const text = typeof b.text === 'string' ? b.text.trim() : '';
+            if (!text) return send(400, { error: 'need {text}' });
+            const status = await channels.send(l, text);
+            return status === 'no-channel' ? send(409, { error: 'read-only: restart the lead with loom lead to chat here' }) : send(200, { status });
+          }
+          if (parts[2] === 'permissions' && parts.length === 4) {
+            if (b.behavior !== 'allow' && b.behavior !== 'deny') return send(400, { error: 'behavior is allow or deny' });
+            return (await channels.answer(l, parts[3], b.behavior)) ? send(200, { ok: true }) : send(409, { error: 'unknown or already answered request' });
+          }
+        }
+        if (req.method === 'GET' && parts[0] === 'sessions' && parts.length === 1) return send(200, [...mirror.live.values()].map((l) => mirror.row(l)));
+        if (req.method === 'GET' && parts[0] === 'sessions' && parts.length === 2) {
+          const l = mirror.bySid(parts[1]);
+          return l ? send(200, { ...mirror.detail(l), pending: channels.pending(l), queued: channels.queue(l) }) : send(404, { error: 'no live session with that id' });
+        }
+      }
       if (opts.readOnly && req.method !== 'GET' && u.pathname !== '/replay' && req.headers['x-loom-replay'] !== replayToken)
         return send(403, { error: 'read-only: only /replay is open' });
       if (u.pathname === '/replay') {   // loom replay <dir>: drive a recording into a fresh <tenant>:replay:<id> graph
@@ -191,13 +266,29 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
               if (t) await live.hook(parts[2], t, input);   // registers on start, releases leases on end
               if (parts[2] === 'SessionStart') {
                 const person = gitTry(repo.top, 'config', 'user.email') ?? 'unknown';
-                const { briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive' });
+                const writer = req.headers['x-loom-lead'] === '1' ? 'lead' : 'main';
+                // compact / clear / resume fire SessionStart again under the same Claude id: the Loom session continues
+                const prior = input.session_id && (input as any).source && (input as any).source !== 'startup' ? activeSession(repo.top, input.session_id) : null;
+                const { sid, briefing } = prior ? { sid: prior.sid, briefing: await sessionBriefing(repo.graph, repo.top, person, prior.writer) }
+                  : await startSession(repo.graph, repo.top, { person, kind: 'interactive', claudeSid: input.session_id ?? null, pids: ppidsOf(req.headers), writer, surface: 'terminal' });
+                if (prior && input.session_id && mirror.live.get(input.session_id)?.sid === sid) {
+                  channels.bind(input.session_id, ppidsOf(req.headers));
+                  return send(200, { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: briefing } });
+                }
+                if (input.session_id) { mirror.start({ claude: input.session_id, sid, writer: prior?.writer ?? writer, person, repo: repo.top }); channels.bind(input.session_id, ppidsOf(req.headers)); }
                 return send(200, { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: briefing } });
               }
-              await finishSession(repo.graph, repo.top, { transcriptPath: (input as any).transcript_path });
+              await finishSession(repo.graph, repo.top, { transcriptPath: (input as any).transcript_path, claudeSid: input.session_id ?? null });
+              if (input.session_id) { mirror.end(input.session_id); channels.drop(input.session_id); }
               return send(200, {});
             }
           }
+          if (!req.headers['x-loom-run'] && !req.headers['x-loom-agent'])   // §3.2: mirror interactive turns; never blocks the hook
+            await mirror.hook(parts[2], input).then((l) => {
+              if (!l) return;
+              channels.bind(l.claude, ppidsOf(req.headers));   // after a daemon restart the session re-binds on its next hook
+              if (parts[2] === 'Stop') void channels.onStop(l);
+            }).catch((e) => console.error(`[loom] mirror: ${String(e)}`));
           const t = await live.target(req.headers, input.cwd, input.session_id);
           if (t) return send(200, await live.hook(parts[2], t, input));
           const r = await runFor(String(req.headers['x-loom-run'] ?? ''), input.cwd);
@@ -249,18 +340,27 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         const r = await runFor(String(b.run ?? ''), b.cwd);
         if (!r) return send(404, { error: 'run not loaded' });
         const g = opts.db.graph(r.c.run);
-        let tasks: PlanTask[];
-        if (b.plan) tasks = validatePlan(b.plan).tasks;
-        else {
-          const top = await scope(g, { title: String(b.goal ?? ''), prompt: '' }, 20);
-          tasks = await llmPlan(String(b.goal ?? ''), { modules: r.c.dirs, top }, { cwd: r.root });
-        }
+        if (!b.plan) return send(400, { error: 'need {plan}: write a team plan (.loom/plans/<slug>.md) and check it with loom plan check' });
+        const tasks: PlanTask[] = validatePlan(b.plan).tasks;
         const scopes = new Map<string, string[]>();
         for (const t of tasks) scopes.set(t.id, await scope(g, t));
         const p = await partition(g, scopes);
         const comp = new Map(p.components.flatMap((ts, i) => ts.map((t) => [t, i] as const)));
         r.c.plan = { tasks: tasks.map((t) => ({ ...t, scope: scopes.get(t.id)!, component: comp.get(t.id) ?? -1 })), hubs: p.hubs, hubOwner: p.hubOwner };
         return send(200, r.c.plan);
+      }
+      if (parts[0] === 'plans') {   // §3.3: team plans in .loom/plans/ and the checker; the repo comes from the caller's cwd
+        const b = req.method === 'POST' ? await body(req) : {};
+        const repo = await resolveRepo(opts.db, String(b.cwd ?? u.searchParams.get('cwd') ?? req.headers['x-loom-cwd'] ?? ''), req.headers['x-loom-home'] as string | undefined);
+        if (!repo) return send(404, { error: 'not a Loom repo (run loom init)' });
+        if (req.method === 'GET' && parts.length === 1) return send(200, listPlans(repo.top));
+        if (req.method === 'GET' && parts.length === 2) {
+          const f = join(repo.top, '.loom', 'plans', `${parts[1]}.md`);
+          if (!/^[\w.-]+$/.test(parts[1]) || !existsSync(f)) return send(404, { error: `no plan ${parts[1]} in .loom/plans/` });
+          const text = readFileSync(f, 'utf8');
+          return send(200, { slug: parts[1], text, ...parseTeamPlan(text) });
+        }
+        if (req.method === 'POST' && parts[1] === 'check') return send(200, await checkPlanAt(repo, b));
       }
       if (req.method === 'GET' && u.pathname === '/plan') {
         const c = runs.get(u.searchParams.get('run') ?? '');
@@ -391,12 +491,32 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   const benchRun = new BenchRun(opts.benchRoot ?? resolve(BENCH, '..'), opts.benchRunner);
 
   /** Read-only (public) mode answers only for the runs this daemon serves: a query on any other name would read, or create, that graph. */
+  /** POST /plans/check: {text} | {slug} | {file} (relative to the caller's cwd). A malformed plan is ok:false, never a 500. */
+  async function checkPlanAt(repo: { top: string; graph: LoomGraph }, b: any) {
+    const f = b.slug ? join(repo.top, '.loom', 'plans', `${String(b.slug)}.md`) : b.file ? resolve(String(b.cwd ?? repo.top), String(b.file)) : null;
+    if (f && !existsSync(f)) return { ok: false, problems: [`no plan file at ${f}`], warnings: [] };
+    const { plan, problems } = parseTeamPlan(f ? readFileSync(f, 'utf8') : String(b.text ?? ''));
+    if (!plan) return { ok: false, problems, warnings: [] };
+    const regionPaths = (await repo.graph.query<{ path: string }>('MATCH (r:Region) RETURN r.path AS path').catch(() => [])).map((r) => r.path);
+    const files = (ref: string) => { const out = gitTry(repo.top, 'ls-tree', '-r', '--name-only', ref); if (out === null) throw new Error(`unknown ref ${ref}`); return out.split('\n').filter(Boolean); };
+    return { ...checkTeamPlan(plan, { files, regions: regionPaths.length, regionPaths }), plan };
+  }
   function serves(run: string) { return !opts.readOnly || runs.has(run); }
 
   await new Promise<void>((r) => server.listen(opts.port, opts.host ?? '127.0.0.1', r));
   const port = (server.address() as { port: number }).port;
   const ui = opts.uiPort === null ? null
-    : await startUi({ port: opts.uiPort ?? 4317, host: opts.host, bus, runs, distDir: opts.distDir ?? DIST, serves, extra: async (u, req) => {
+    : await startUi({ port: opts.uiPort ?? 4317, host: opts.host, bus, runs, distDir: opts.distDir ?? DIST, serves, raw: async (u, req, res) => {
+      if (u.pathname !== '/lead' && !u.pathname.startsWith('/lead/api/')) return false;
+      if (opts.readOnly) { res.writeHead(404, { 'content-type': 'application/json' }); res.end('{"error":"read-only: the lead page is local only"}'); }   // never hand out the token
+      else if (u.pathname === '/lead') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(leadPage(token)); }
+      else {
+        const path = u.pathname.slice('/lead/api'.length);
+        if (path === '/events' || path === '/sessions' || path.startsWith('/sessions/')) await passThrough(req, res, port, path, u.search);
+        else { res.writeHead(404, { 'content-type': 'application/json' }); res.end('{"error":"the lead page reaches only /events and /sessions"}'); }
+      }
+      return true;
+    }, guard: opts.readOnly ? undefined : localOnly, extra: async (u, req) => {
       const run = u.searchParams.get('run') ?? '';
       if (u.pathname === '/bench/run') {
         if (req.method === 'GET') return { readOnly: Boolean(opts.readOnly), ...benchRun.status() };

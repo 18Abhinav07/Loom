@@ -119,6 +119,9 @@ export function printSummary(r: { state: 'A' | 'B' | 'C'; committed: boolean; pe
     `test ${s.test ?? 'none found'} · compile ${s.compile ?? 'none'}`, r.committed ? 'committed .loom/' : r.pending ? '.loom/ not committed' : '.loom/ up to date in git'].join('\n');
 }
 
+/** Files the state-A first commit never takes: env files (not their .example/.sample/.template), keys, OS litter. */
+const SECRET_FILE = /(^|\/)(\.env(?!\.(example|sample|template)$)(\..+)?|[^/]+\.(pem|key|p12|pfx)|id_(rsa|ed25519|ecdsa)|\.DS_Store)$/;
+
 export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: string; loomCmd: string; tenant?: string; testCmd?: string; db?: LoomDb;
   /** Commit .loom/ when init is done. Undefined means no. */ commit?: boolean }) {
   const top = git(cwd, 'rev-parse', '--show-toplevel');
@@ -128,10 +131,13 @@ export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: stri
   const mainRoot = dirname(common);
   const hasHead = spawnSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: mainRoot }).status === 0;
   const state: 'A' | 'B' | 'C' = !hasHead ? 'A' : existsSync(join(mainRoot, '.loom', 'config.json')) ? 'C' : 'B';
-  if (state === 'A') {   // no commits yet: the repo id is its first commit, so make one from what is here
+  let withheld: string[] = [];
+  if (state === 'A') {   // no commits yet: the repo id is its first commit, so make one from what is here, never with secrets in it
     const gi = join(mainRoot, '.gitignore');
-    if (!existsSync(gi)) writeFileSync(gi, 'node_modules/\n.venv/\n__pycache__/\n');
+    if (!existsSync(gi)) writeFileSync(gi, 'node_modules/\n.venv/\n__pycache__/\n.env\n.env.*\n!.env.example\n*.pem\n*.key\n.DS_Store\n');
     git(mainRoot, 'add', '-A');
+    withheld = git(mainRoot, 'diff', '--cached', '--name-only').split('\n').filter((f) => SECRET_FILE.test(f));
+    if (withheld.length) git(mainRoot, 'rm', '-q', '--cached', '--', ...withheld);
     execFileSync('git', [...IDENT(mainRoot), 'commit', '-q', '--allow-empty', '-m', 'loom: initial commit'], { cwd: mainRoot, stdio: 'ignore' });
   }
   const id = repoId(mainRoot);                                                    // throws on a repo with no commits
@@ -158,6 +164,10 @@ export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: stri
       const m = existsSync(mp) ? JSON.parse(readFileSync(mp, 'utf8')) : {};
       (m.mcpServers ??= {}).loom = { command: 'node', args: [o.mcpPath] };
       writeFileSync(mp, JSON.stringify(m, null, 2) + '\n');
+      // pre-approve it: claude's own prompt defaults to "continue without", and then the lead has no channel
+      const st = JSON.parse(readFileSync(sp, 'utf8'));
+      st.enabledMcpjsonServers = [...new Set([...(st.enabledMcpjsonServers ?? []), 'loom'])];
+      writeFileSync(sp, JSON.stringify(st, null, 2) + '\n');
     }
     await importSessions(g, mainRoot, null);
     if (hadLock) await reconcile(g, mainRoot, null, 'HEAD', 200);                // a clone of a Loom repo: catch up on what landed without us
@@ -171,7 +181,7 @@ export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: stri
     const summary: InitSummary = { files: s.files, regions, degraded: s.degraded.length, sessions, people, last: last ?? null,
       compile: (cfg as LoomConfig).compile ?? null, test: cfg.testCmd ?? null };
     const committed = o.commit === true && commitLoom(mainRoot);
-    return { mainRoot, config: cfgPath, settings: sp, state, committed, pending: loomPending(mainRoot), summary, text };
+    return { mainRoot, config: cfgPath, settings: sp, state, committed, pending: loomPending(mainRoot), summary, text, withheld };
   } finally { if (!o.db) await db.close(); }
 }
 
@@ -245,6 +255,7 @@ export async function main(argv: string[]): Promise<number> {
         mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs'), loomCmd: `node ${join(loomRoot(), 'packages', 'cli', 'dist', 'loom.cjs')}` });
     } catch (e) { console.error(`loom init: ${(e as Error).message}`); return 1; }
     console.log(printSummary(r));
+    if (r.withheld.length) console.log(`not in the first commit (secrets stay untracked): ${r.withheld.join(', ')}`);
     if (r.pending) console.log('next: commit .loom/ (it carries the regions lock and session records to teammates)');
     if (!tty || rest.includes('--no-lead')) { console.log('start the lead with `loom lead`'); return 0; }
     if (!(await askYes('Start the lead now? [Y/n] '))) { console.log('start the lead later with `loom lead`'); return 0; }
@@ -411,11 +422,30 @@ export async function main(argv: string[]): Promise<number> {
       c.strength == null ? '-' : c.strength.toFixed(2), c.blindSpots?.length ? `blind: ${c.blindSpots.join(', ')}` : c.missing ?? '']));
     return claims.every((c: any) => c.state === 'VERIFIED' && !c.blindSpots?.length) ? 0 : 1;
   }
-  if (cmd === 'plan') {
+  if (cmd === 'plan' && ['ls', 'show', 'check'].includes(rest[0])) {   // §3.3: team plans in .loom/plans/ and the checker
+    const [sub, arg] = rest;
+    if (sub !== 'ls' && !arg) { console.error(`usage: loom plan ${sub} <slug${sub === 'check' ? ' | file' : ''}>`); return 1; }
+    const cwd = process.cwd();
+    let r: Response;
+    try {
+      r = sub === 'ls' ? await fetch(`${DAEMON}/plans?cwd=${encodeURIComponent(cwd)}`)
+        : sub === 'show' ? await fetch(`${DAEMON}/plans/${encodeURIComponent(arg)}?cwd=${encodeURIComponent(cwd)}`)
+        : await fetch(`${DAEMON}/plans/check`, { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ cwd, ...(existsSync(resolve(cwd, arg)) ? { file: arg } : { slug: arg }) }) });
+    } catch (e) { return failed(e); }
+    const j = await r.json();
+    if (!r.ok) { console.error(j.error); return 1; }
+    if (sub === 'ls') { table('plans (.loom/plans/)', ['slug', 'tasks', 'goal'], j.map((p: any) => [p.slug, String(p.tasks), p.goal.slice(0, 70)])); return 0; }
+    if (sub === 'show') { console.log(j.text); return 0; }
+    for (const p of j.problems) console.log(`problem: ${p}`);
+    for (const w of j.warnings) console.log(`warning: ${w}`);
+    console.log(j.ok ? `ok: ${j.plan.tasks.length} task(s); a team can start from this plan` : `not ok: ${j.problems.length} problem(s); fix them before a team starts`);
+    return j.ok ? 0 : 1;
+  }
+  if (cmd === 'plan') {   // the bench's symbol partition of a v1 plan file
     const file = flag(rest, '--plan');
-    const goal = rest.find((x, i) => !x.startsWith('--') && !['--plan', '--run'].includes(rest[i - 1]));
-    if (!file && !goal) { console.error('usage: loom plan (--plan <file> | "<goal>") [--run R]'); return 1; }
-    const req = { run: flag(rest, '--run') ?? '', cwd: process.cwd(), ...(file ? { plan: loadPlan(file) } : { goal }) };
+    if (!file) { console.error('usage: loom plan ls | show <slug> | check <slug | file>   (bench: loom plan --plan <file> [--run R])'); return 1; }
+    const req = { run: flag(rest, '--run') ?? '', cwd: process.cwd(), plan: loadPlan(file) };
     let r: Response;
     try { r = await fetch(`${DAEMON}/plan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(req) }); }
     catch (e) { return failed(e); }

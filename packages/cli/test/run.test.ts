@@ -3,7 +3,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { afterAll, beforeAll, expect, test } from 'vitest';
+import { afterAll, beforeAll, expect, test, vi } from 'vitest';
+
+vi.setConfig({ testTimeout: 30_000 });   // real git + fake-claude subprocesses: 5 s is too tight under full-suite load
 import { LoomDb } from '@loom/core';
 import { startServer } from '../../daemon/src/server.js';
 import { mergeCheck } from '../../daemon/src/mergecheck.js';

@@ -74,7 +74,7 @@ function RunIt({ onWatch }: { onWatch: (run: string) => void }) {
     <section className="runit">
       <div className="card">
         <h3>Watch 3 real agents</h3>
-        <p>A recorded run: three Claude Code agents build one feature in parallel on Django. Loom replays it on the Live screen.</p>
+        <p>A recorded run: three Claude Code agents build one feature in parallel on a real open-source Python codebase. Loom replays it on the Live screen.</p>
         <button className="go" onClick={watch}>▶ Watch</button>
       </div>
       {SETS.map((s) => (

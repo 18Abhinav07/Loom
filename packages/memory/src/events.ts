@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ulid } from './ids.js';
+import { envValues, redactDeep } from './redact.js';
 
-export const EVENT_TYPES = ['session', 'agent', 'task', 'version', 'decision', 'evidence', 'lesson', 'message', 'handoff'] as const;
+export const EVENT_TYPES = ['session', 'agent', 'task', 'version', 'decision', 'evidence', 'lesson', 'message', 'handoff',
+  'turn', 'tool', 'plan', 'team', 'collision'] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 export type LoomEvent = { v: 1; type: EventType; id: string; at: number } & Record<string, any>;
 
@@ -12,10 +15,19 @@ export function fileSession(path: string): { sid: string; writer: string } | nul
   return m ? { sid: m[1], writer: m[2] } : null;
 }
 
+export interface Party { person: string; session: string; agent?: string | null }
+/** §4.3: a hash of kind, the sorted parties, the region and the triggering version, so two machines that detect the same
+ *  collision write the same id and the import collapses them. */
+export function collisionId(kind: string, parties: Party[], region: string[], version?: string | null): string {
+  const ps = parties.map((p) => `${p.person}|${p.session}|${p.agent ?? ''}`).sort();
+  return 'col_' + createHash('sha256').update(JSON.stringify([kind, ps, [...region].sort(), version ?? null])).digest('hex').slice(0, 24);
+}
+
 /** One line per event; the file has exactly one writer (§5), so appends never interleave. */
 export function appendEvent(root: string, sid: string, writer: string,
   ev: { type: EventType; id?: string; at?: number } & Record<string, unknown>): LoomEvent {
-  const e = { v: 1, ...ev, id: ev.id ?? ulid(), at: ev.at ?? Date.now() } as LoomEvent;
+  const { type, id, at, ...rest } = ev;   // §4.4: nothing secret is ever written, whoever builds the event
+  const e = { v: 1, type, ...redactDeep(rest, envValues(root)), id: id ?? ulid(), at: at ?? Date.now() } as LoomEvent;
   const p = join(root, sessionFile(root, sid, writer));
   mkdirSync(dirname(p), { recursive: true });
   appendFileSync(p, JSON.stringify(e) + '\n');

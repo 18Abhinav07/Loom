@@ -1,6 +1,4 @@
-import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { parse } from 'yaml';
 import type { LoomGraph } from '@loom/core';
 
@@ -121,26 +119,4 @@ export async function partition(g: LoomGraph, scopes: Map<string, string[]>): Pr
   }
 }
 
-const SCHEMA = join(import.meta.dirname ?? '.', '..', 'schema', 'tasks.schema.json');
-
-/** Spec §5.7.1: one `claude -p` structured-output call turns a goal into tasks. Invalid output throws; no silent fallback. */
-export async function llmPlan(goal: string, ctx: { modules: string[]; top: string[] }, o: { cwd?: string; bin?: string } = {}): Promise<PlanTask[]> {
-  const prompt = [
-    `Split this goal into 2-4 independent coding tasks for parallel agents: ${goal}`,
-    `Modules: ${ctx.modules.join(', ')}`, `Relevant symbols: ${ctx.top.join(', ')}`,
-    'Each task: id (lowercase, a-z0-9-), short title, a full prompt an engineer can act on alone, scopeHints (symbol ids from the list).',
-    'Do not edit any files; only return the plan.',
-  ].join('\n');
-  const env = { ...process.env }; delete env.ANTHROPIC_API_KEY; delete env.ANTHROPIC_AUTH_TOKEN;
-  const out = await new Promise<string>((res, rej) => execFile(o.bin ?? 'claude',
-    ['-p', prompt, '--model', 'sonnet', '--output-format', 'json', '--json-schema', readFileSync(SCHEMA, 'utf8'), '--setting-sources', 'project'],
-    { env, cwd: o.cwd, maxBuffer: 20 << 20, timeout: 300_000 }, (e, so, se) => (e ? rej(new Error(`planner: claude failed: ${se || e.message}`)) : res(so))));
-  let tasks: unknown;
-  try {
-    const j = JSON.parse(out);
-    tasks = (j.structured_output ?? JSON.parse(typeof j.result === 'string' ? j.result : 'null'))?.tasks;
-    return validatePlan({ tasks: (tasks as any[]).map((t) => ({ id: t.id, title: t.title, prompt: t.prompt })) }).tasks;
-  } catch (e) {
-    throw new Error(`planner returned invalid output: ${(e as Error).message}; raw: ${out.slice(0, 300)}`);
-  }
-}
+export * from './teamplan.js';

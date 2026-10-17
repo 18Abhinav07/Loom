@@ -48,7 +48,7 @@ afterAll(async () => { await srv.close(); await db.graph(run).drop(); await db.g
 test('3.1 twelve tools; decision, contract lease grant/deny, who_is_touching', async () => {
   const A = await client('A'); const C = await client('C');
   const names = (await A.listTools()).tools.map((t) => t.name).sort();
-  expect(names).toEqual(['ack_notice', 'claim_done', 'claim_task', 'impact', 'lease', 'lessons', 'notices', 'record_decision',
+  expect(names).toEqual(['ack_notice', 'check_plan', 'claim_done', 'claim_task', 'impact', 'lease', 'lessons', 'notices', 'record_decision',
     'register', 'release', 'who_is_touching', 'why']);
   expect(JSON.parse((await call(A, 'register')).text)).toMatchObject({ ok: true });
   const d = await call(A, 'record_decision', { text: 'kw-only strict', symbols: [SID] });
@@ -70,11 +70,18 @@ test('3.1 twelve tools; decision, contract lease grant/deny, who_is_touching', a
   expect(JSON.parse((await call(A, 'lessons', { scope: SID })).text)).toMatchObject([{ id: `manual:${SID}`, text: 'strict is keyword-only' }]);
 });
 
+test('B3 check_plan: the plan text is checked against the caller\'s repo; outside a Loom repo it is a tool error', async () => {
+  const A = await client('A');
+  const r = await call(A, 'check_plan', { text: '---\ngoal: g\ntasks: []\n---\n' });
+  expect(r.isError).toBe(true);   // tree() is a plain git repo, not loom init'd
+  expect(r.text).toContain('not a Loom repo');
+});
+
 test('3.2 an unknown run is a tool error, and the session keeps working', async () => {
   const X = await client('X', 'no-such-run');
   const r = await call(X, 'notices');
   expect(r.isError).toBe(true);
   expect(r.text).toContain('run not loaded');
   expect((await call(X, 'lessons')).isError).toBe(true);
-  expect((await X.listTools()).tools).toHaveLength(12);
+  expect((await X.listTools()).tools).toHaveLength(13);
 });

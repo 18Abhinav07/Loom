@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { subscriptionEnv } from '@loom/core';
 
 export type BenchRunner = (cmd: string, args: string[], o: { cwd: string; env: NodeJS.ProcessEnv }) => { done: Promise<number> };
 export interface BenchRunState { state: 'idle' | 'running' | 'done' | 'failed'; set?: string; records?: string; total?: number; error?: string }
@@ -26,7 +27,7 @@ export class BenchRun {
     if (this.st.state === 'running') return [409, `a ${this.st.set} run is already going`];
     const records = join(this.root, 'runs', 'e1', `ui-${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}`);
     mkdirSync(records, { recursive: true });
-    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('ANTHROPIC_')));   // subscription, never a paid key
+    const env = subscriptionEnv(process.env);   // subscription, never a paid key
     const py = join(this.root, '.venv', 'bin', 'python');
     this.st = { state: 'running', set: String(set), records, total: s.pairs * 2 };
     const run = this.runner(py, ['-m', 'e1.run', '--set', s.arg, '--conds', 'blind,live', '--model', 'sonnet', '--skip-done', records], { cwd: this.root, env });

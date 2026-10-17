@@ -34,6 +34,26 @@ test('state A: an empty repo gets an initial commit then a full init', async () 
   expect(r.summary).toMatchObject({ files: 2, regions: { python: 1 } });   // a.py and the .gitignore init wrote
 });
 
+// Final review I4: the state-A first commit is made whether or not the user agreed to commit, so it must never carry secrets.
+test('state A: the first commit withholds .env, keys and .DS_Store, even under an existing .gitignore that misses them', async () => {
+  const d = dir({ 'a.py': 'x = 1\n', '.env': 'K=livekey123456\n', '.env.example': 'K=\n', 'apps/api/.env.local': 'K=x\n', 'certs/site.pem': 'k', '.DS_Store': 'x',
+    '.gitignore': 'build/\n' }, false);
+  const r = await init(d, false);
+  const files = git(d, 'show', '--name-only', '--format=', 'HEAD').split('\n');
+  expect(files).toEqual(expect.arrayContaining(['a.py', '.env.example', '.gitignore']));
+  for (const f of ['.env', 'apps/api/.env.local', 'certs/site.pem', '.DS_Store']) expect(files).not.toContain(f);
+  expect(r.withheld.sort()).toEqual(['.DS_Store', '.env', 'apps/api/.env.local', 'certs/site.pem']);
+  expect(readFileSync(join(d, '.gitignore'), 'utf8')).toBe('build/\n');   // the user's own .gitignore is not rewritten
+});
+
+test('state A: the .gitignore init writes ignores env files and keys', async () => {
+  const d = dir({ 'a.py': 'x = 1\n', '.env': 'K=livekey123456\n' }, false);
+  await init(d);
+  const gi = readFileSync(join(d, '.gitignore'), 'utf8');
+  for (const l of ['.env', '.env.*', '!.env.example', '*.pem', '.DS_Store']) expect(gi.split('\n')).toContain(l);
+  expect(git(d, 'show', '--name-only', '--format=', 'HEAD').split('\n')).not.toContain('.env');
+});
+
 test('state B: commit:true commits .loom', async () => {
   const d = dir({ 'a.py': 'x = 1\n' }, true);
   const r = await init(d, true);

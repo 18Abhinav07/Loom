@@ -6,7 +6,7 @@ import { parseEvents, sessionFile } from '../src/events.js';
 import { ulid } from '../src/ids.js';
 import { indexRepo } from '../src/indexrepo.js';
 import { postCommit, preCommit } from '../src/commit.js';
-import { writeActive } from '../src/session.js';
+import { activeSession, writeActive } from '../src/session.js';
 import { closeDb, repo, sh, testGraph } from './helpers.js';
 
 afterAll(closeDb);
@@ -78,4 +78,26 @@ test('the lock records the real staged blob sha (bytes untouched, trailing newli
   await preCommit(r, g);
   expect(readFileSync(join(r, '.loom/regions.lock'), 'utf8')).toContain(sh(r, 'rev-parse', ':a.py'));
   await g.drop();
+});
+
+// Final review I5: two sessions in one checkout. A commit is credited to the session whose claude process is an ancestor of the
+// committing process, not to whichever session started last.
+test('pre-commit picks the active session whose recorded pids are nearest ancestors of the committer', async () => {
+  const { r, g } = await setup();
+  const a = ulid(), b = ulid();
+  writeActive(r, { sid: a, writer: 'lead', by: 'lead', task: null, claude: 'A', pids: [process.pid, 1] }, 'A');
+  await new Promise((ok) => setTimeout(ok, 20));
+  writeActive(r, { sid: b, writer: 'main', by: 'main', task: null, claude: 'B', pids: [999_999, 1] }, 'B');   // started later
+  writeFileSync(join(r, 'a.py'), SRC.replace('return 1', 'return 11')); sh(r, 'add', 'a.py');
+  expect((await preCommit(r, g)).versions).toBe(1);
+  const lead = parseEvents(readFileSync(join(r, sessionFile(r, a, 'lead')), 'utf8').split('\n')).events;
+  expect(lead.filter((e) => e.type === 'version')).toHaveLength(1);
+});
+
+test('activeSession with ancestors: nearest match wins; a shared far ancestor (the terminal app) does not decide it', () => {
+  const r = repo({ 'x.py': 'x = 1\n' });
+  writeActive(r, { sid: 'S1', writer: 'lead', by: 'lead', task: null, claude: 'A', pids: [100, 50, 7] }, 'A');
+  writeActive(r, { sid: 'S2', writer: 'main', by: 'main', task: null, claude: 'B', pids: [200, 60, 7] }, 'B');
+  expect(activeSession(r, null, [900, 100, 50, 7])?.sid).toBe('S1');
+  expect(activeSession(r, null, [900, 60, 7])?.sid).toBe('S2');
 });

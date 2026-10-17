@@ -2,14 +2,13 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { subscriptionEnv } from '@loom/core';
 
 export const leadArgs = (extra: string[]) => ['--dangerously-load-development-channels', 'server:loom', ...extra];
 
 /** The user's env minus any paid key (the lead runs on the subscription), marked as the lead for Loom's hooks. */
 export function leadEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const out: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(env)) if (!k.startsWith('ANTHROPIC_')) out[k] = v;
-  return { ...out, LOOM_LEAD: '1' };
+  return { ...subscriptionEnv(env), LOOM_LEAD: '1' };
 }
 
 /** Runs claude in the foreground at the repo root and returns its exit code. */
