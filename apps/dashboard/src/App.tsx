@@ -59,7 +59,7 @@ export function App() {
     <>
       <header className="top">
         <div className="brand"><svg width="26" height="26" viewBox="0 0 26 26" fill="none"><path d="M4 7h18M4 13h18M4 19h18" stroke="#D9D6CB" strokeWidth="2" strokeLinecap="round" /><path d="M8 4v18M13 4v18M18 4v18" stroke="#D97757" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 2" /></svg>Loom</div>
-        {cwd && <div className="proj" title={cwd}>repo <b>{base(cwd)}</b></div>}
+        {demo ? <div className="proj" title="a recording, not your repo">demo <b>recorded run</b></div> : cwd && <div className="proj" title={cwd}>repo <b>{base(cwd)}</b></div>}
         <nav className="tabs" ref={bar}>
           <div className="tabpill" style={pill} />
           {TABS.map((t) => (
@@ -72,6 +72,7 @@ export function App() {
         <button className="btn or" onClick={newTeam}>+ New team</button>
       </header>
       <main>
+        {demo && view !== 'home' && <div className="card sp" style={{ marginBottom: 14 }}><b>Demo is on.</b> Home plays a recorded run on a different codebase. This screen shows the real data of <b>{base(cwd) || 'this repo'}</b>, which is why the agents differ. <button className="btn ghost sm" onClick={() => setDemo(false)}>Exit demo</button></div>}
         {tab.views.length > 1 && (
           <div className="subtabs">{tab.views.map((v) => <button key={v} className={`chip ${v === view ? 'on' : ''}`} onClick={() => setView(v)}>{SUB[v]}</button>)}</div>)}
         {view === 'home' ? <Home go={go} demo={demo} /> : view === 'bench' ? <Bench /> : view === 'lead' ? <Lead say={say} /> : view === 'plans' ? <Plans go={go} />
