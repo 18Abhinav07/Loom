@@ -49,6 +49,14 @@ export function createLoomMcp(o: LoomMcpOpts): McpServer {
   tool('record_decision', 'Optional. Record a design decision and the symbols it constrains; `why` will show it.',
     { text: z.string().optional(), decision: z.string().optional(), symbols: z.array(sym).optional() });
   tool('why', 'Decision → task → agent → change → commit path for a symbol (or file.py:line).', { symbol: z.string() });
+  // The lead's team tools (daemon refuses them from a team agent). `team` defaults to your repo's newest running team.
+  const team = z.string().optional().describe('team id; default: the newest running team of this repo');
+  tool('start_team', 'Start a team from a checked plan: a slug in .loom/plans/ or a plan file. Agents report back to you here.', { plan: z.string(), model: z.string().optional() });
+  tool('team_status', 'Agents of a team (or all teams of this repo): state, task, landed commit.', { team });
+  tool('message_agent', 'Send a message to a running team agent.', { team, agent: z.string(), text: z.string() });
+  tool('stop_team', 'Stop every agent of a team.', { team });
+  tool('stop_agent', 'Stop one team agent.', { team, agent: z.string() });
+  tool('restart_agent', 'Restart a stopped or blocked team agent, optionally with a note.', { team, agent: z.string(), note: z.string().optional() });
   tool('lessons', 'Lessons from earlier runs: about one symbol id (scope), else about what you are working on.', { scope: z.string().optional() });
   server.registerTool('check_plan', { description: 'Check a team plan (.loom/plans/<slug>.md, a file path, or the plan text) before a team starts. '
     + 'Returns ok, problems (which refuse a start) and warnings.', inputSchema: { slug: z.string().optional(), file: z.string().optional(), text: z.string().optional() } },

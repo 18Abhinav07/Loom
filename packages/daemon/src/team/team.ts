@@ -20,7 +20,8 @@ export interface TeamView { id: string; plan: string; goal: string; repo: string
   landed: string; state: 'running' | 'done' | 'stopped'; agents: TeamAgentView[]; startedAt: number }
 export interface TeamDeps { routes: LiveRoutes; bin?: string; url?: string; hookCmd?: string; mcpPath?: string; pollMs?: number;
   onAgentEvent?(team: string, agent: string, text: string): void;
-  onCollision?(team: string, c: CollisionIn): void }
+  onCollision?(team: string, c: CollisionIn): void;
+  onTeam?(team: string, e: { action: string; agent?: string; detail: string }): void }
 
 interface A { t: TeamTask; state: AgentState; sid: string; wt: string; branch: string; lands: string[]; resumed: number; lastReply?: string;
   proc?: AgentProc; sessionId?: string }
@@ -56,7 +57,10 @@ export class Team {
   }
 
   private ev(e: Record<string, unknown> & { type: 'team' | 'collision' }) { return appendEvent(this.o.repo, this.id, 'coord', e); }
-  private team(action: string, agent?: string, detail = '') { this.ev({ type: 'team', team: this.id, plan: this.slug, action, agent, detail }); }
+  private team(action: string, agent?: string, detail = '') {
+    this.ev({ type: 'team', team: this.id, plan: this.slug, action, agent, detail });
+    this.d.onTeam?.(this.id, { action, agent, detail });
+  }
 
   private async init() {
     const { repo, planPath } = this.o;

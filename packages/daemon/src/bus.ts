@@ -1,5 +1,5 @@
 /** B3: the lead/session stream the dashboard reads (`GET /events`). One ring for the machine; `seq` only grows. */
-export type BusKind = 'turn' | 'tool' | 'state' | 'permission' | 'channel';
+export type BusKind = 'turn' | 'tool' | 'state' | 'permission' | 'channel' | 'team';
 export interface BusEvent { seq: number; at: number; repo: string; sid: string; kind: BusKind; data: Record<string, unknown> }
 
 export class Bus {
