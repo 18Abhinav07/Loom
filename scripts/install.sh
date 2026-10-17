@@ -9,5 +9,5 @@ pnpm install
 pnpm -r build 2>/dev/null || true
 pnpm build:hook && pnpm build:mcp && pnpm build:cli && pnpm build:ui
 (cd packages/cli && npm link >/dev/null)
-echo; echo "done. try:  loom demo      (dashboard + live StaleBench showdown)"
-echo "            cd your-repo && loom init   (use Loom on your own project)"
+echo; echo "done. try it on Django:"
+echo "  git clone https://github.com/django/django && cd django && loom init   # then press Plan"; echo "  loom stalebench --check            # verify the benchmark setup, spends nothing"

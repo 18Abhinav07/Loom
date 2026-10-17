@@ -36,6 +36,27 @@ function Bar({ n, of, tone, text }: { n: number; of: number; tone: 'bad' | 'good
   );
 }
 
+const SIZES = [
+  { n: '3 tasks', sub: 'live Django demo, one run per side', runs: '6 agent runs', cmd: 'cd django && loom init   # then press Plan' },
+  { n: '12 pairs', sub: 'core set, blind vs Loom', runs: '24 agent runs', cmd: 'loom stalebench --pairs 12' },
+  { n: '36 pairs', sub: 'every real-derived pair, blind vs Loom', runs: '72 agent runs', cmd: 'loom stalebench --pairs 36' },
+  { n: '108 runs', sub: '36 pairs × blind, oracle and Loom', runs: '108 agent runs', cmd: 'loom stalebench --pairs 36 --oracle' },
+];
+function RunYourself() {
+  const [i, setI] = useState(1);
+  const [done, setDone] = useState(false);
+  const s = SIZES[i]!;
+  return (
+    <section className="card sp runit">
+      <h3>Run it yourself</h3>
+      <p className="dim">One pair = two agents editing the same Django code at once, one of them changing a helper the other calls. The 36 pairs are STALE-bench's real-derived tier (12 helper functions × 3 kinds of change). "108" is 36 pairs × 3 conditions, not 108 tasks. Pick a size:</p>
+      <div className="sizes">{SIZES.map((x, k) => <button key={x.n} className={`size ${k === i ? 'on' : ''}`} onClick={() => { setI(k); setDone(false); }}><b>{x.n}</b><span>{x.sub}</span><small>{x.runs}</small></button>)}</div>
+      <div className="cmdrow"><code>{s.cmd}</code>
+        <button className="cp" onClick={() => { try { void navigator.clipboard.writeText(s.cmd.split('   #')[0]!); setDone(true); } catch { /* clipboard blocked */ } }}>{done ? 'Copied' : 'Copy'}</button></div>
+      <p className="dim" style={{ fontSize: 12 }}>Spends Claude Haiku tokens: it asks before starting. <code>loom stalebench --check</code> verifies your setup first and spends nothing. Django and the STALE-bench data are fetched by the command, not bundled. Published numbers are the 12-pair core; the 36-pair and 108-run sets have not been run.</p>
+    </section>);
+}
+
 export function Bench() {
   const [b, setB] = useState<Record<string, J> | null>(null);
   const [cmp, setCmp] = useState<Compare | null>(null);
@@ -92,6 +113,7 @@ export function Bench() {
           </>}
         </section>)}
       {!cmp && <p className="dim">No comparison recorded yet. Run <code>bench/regen.sh</code>.</p>}
+      <RunYourself />
       <details className="card sp"><summary><b>Pre-registration</b></summary><pre style={{ whiteSpace: 'pre-wrap', fontSize: 12.5, marginTop: 10 }}>{PREREG}</pre></details>
       <details className="card sp">
         <summary><b>Raw records</b></summary>

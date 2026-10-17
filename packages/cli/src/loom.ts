@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { LoomDb, type LoomGraph } from '@loom/core';
 import { loadPlan } from '@loom/planner';
 import { regionsCmd } from './regions.js';
+import { stalebenchCmd } from './stalebench.js';
 import { exitCode, runPlan } from './run.js';
 import { teamCmd } from './team.js';
 import { resolveAttach, resolveRepo } from '@loom/daemon';
@@ -219,6 +220,7 @@ async function ensureDaemon(): Promise<number> {
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   if (cmd === 'regions') return regionsCmd(rest);
+  if (cmd === 'stalebench') return stalebenchCmd(rest);
   if (cmd === 'init') {
     if (await ensureDb() !== 0) return 1;
     if (spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: process.cwd() }).status !== 0) {   // a brand-new folder: make it a repo so teams can branch from it
@@ -461,7 +463,7 @@ export async function main(argv: string[]): Promise<number> {
     if (!rest.includes('--no-open')) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
     return 0;
   }
-  console.log('usage: loom init | up | down | status [--release <agent>] | why <target> [--run R] | verify [task] [--run R] | lesson add|list|rm | merge-check <a> <b> [--run R] | plan (--plan F | "goal") | team start|status|stop|merge|msg | run --plan F | ui [--run R]');
+  console.log('usage: loom init | stalebench [--pairs 12|36] | up | down | status [--release <agent>] | why <target> [--run R] | verify [task] [--run R] | lesson add|list|rm | merge-check <a> <b> [--run R] | plan (--plan F | "goal") | team start|status|stop|merge|msg | run --plan F | ui [--run R]');
   return cmd ? 1 : 0;
 }
 
