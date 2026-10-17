@@ -67,6 +67,13 @@ export async function collisions(g: LoomGraph, o: { kind?: string | null; person
     .filter((r) => (!o.kind || r.kind === o.kind) && (!o.person || r.parties.some((p) => p.person === o.person)));
 }
 
+/** Regions whose id contains q (case-insensitive), at most `limit`. No query, no list: the graph can hold thousands. */
+export async function searchRegions(g: LoomGraph, q: string, limit = 30) {
+  if (!q.trim()) return [];
+  return g.query<{ id: string; path: string | null }>(
+    'MATCH (r:Region) WHERE toLower(r.id) CONTAINS toLower($q) RETURN r.id AS id, r.path AS path ORDER BY r.id LIMIT $limit', { q: q.trim(), limit });
+}
+
 export async function region(g: LoomGraph, id: string) {
   const [r] = await g.query<{ id: string; path: string | null }>('MATCH (r:Region {id: $id}) RETURN r.id AS id, r.path AS path', { id });
   if (!r) return null;

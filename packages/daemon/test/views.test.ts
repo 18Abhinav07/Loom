@@ -97,6 +97,13 @@ test('/collisions: the divergence with its parties; ?kind and ?person filter', a
   expect((await get('/collisions?person=zed@t')).body).toEqual([]);
 });
 
+test('/regions?q= finds regions by name; an empty query lists none', async () => {
+  const hit = (await get('/regions?q=slug')).body;
+  expect(hit.map((r: any) => r.id)).toContain(R1);
+  expect((await get('/regions?q=zzz-none')).body).toEqual([]);
+  expect((await get('/regions')).body).toEqual([]);
+});
+
 test('/regions/:id: versions in order with person, decision and commit; collisions at it', async () => {
   const { body, status } = await get(`/regions/${encodeURIComponent(R1)}`);
   expect(status).toBe(200);

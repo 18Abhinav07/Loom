@@ -25,7 +25,7 @@ import { LiveRoutes } from './live/routes.js';
 import { activeSession, finishSession, gitTry, lessonsFor, sessionBriefing, startSession } from '@loom/memory';
 import { Bus } from './bus.js';
 import { TeamRoutes, TEAM_TOOLS } from './team/routes.js';
-import { benchCompare, brief, collab, collisions, growth, people, region, sessionDetail, sessions as sessionRows } from './views.js';
+import { benchCompare, brief, collab, collisions, growth, people, region, searchRegions, sessionDetail, sessions as sessionRows } from './views.js';
 import { Mirror } from './mirror.js';
 import { Channels } from './channels.js';
 import { authorized, machineToken } from './token.js';
@@ -536,7 +536,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       case 'collisions': return ok(await collisions(g, { kind: q('kind'), person: q('person') }));
       case 'growth': return ok(await growth(g));
       case 'brief': return ok(await brief(g, repo.root, q('person')));
-      case 'regions': { const r = parts[1] ? await region(g, parts[1]) : null; return r ? ok(r) : { status: 404, body: { error: 'no such region' } }; }
+      case 'regions': { if (!parts[1]) return ok(await searchRegions(g, q('q') ?? '')); const r = parts[1] ? await region(g, parts[1]) : null; return r ? ok(r) : { status: 404, body: { error: 'no such region' } }; }
       default: {
         if (parts.length === 1) return ok(await sessionRows(g, { person: q('person'), limit: q('limit') ? Number(q('limit')) : undefined }));
         const d = await sessionDetail(g, parts[1]);
