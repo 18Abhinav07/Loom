@@ -9,17 +9,22 @@ export function leadPage(token: string): string {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Loom lead</title>
 <style>
-:root { --bg:#fbfaf7; --fg:#1d1c1a; --mut:#6f6a61; --line:#e3dfd6; --card:#fff; --acc:#2f5d50; --warn:#9a5b13; }
-@media (prefers-color-scheme: dark) { :root { --bg:#151514; --fg:#ecebe6; --mut:#9a958b; --line:#2c2b28; --card:#1d1c1a; --acc:#7fbfa9; --warn:#e0a35a; } }
-* { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 ui-sans-serif,system-ui,sans-serif }
-main { display:grid; grid-template-columns:260px 1fr; height:100vh } @media (max-width:720px) { main { grid-template-columns:1fr; height:auto } }
-aside { border-right:1px solid var(--line); padding:16px; overflow:auto } section { display:flex; flex-direction:column; min-height:0; padding:16px }
-h1 { font-size:15px; margin:0 0 12px } .s { display:block; width:100%; text-align:left; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:8px; padding:8px; margin-bottom:8px; cursor:pointer }
-.s.on { border-color:var(--acc) } .m { color:var(--mut); font-size:12px } #turns { flex:1; overflow:auto; display:flex; flex-direction:column; gap:8px; padding-bottom:12px }
-.t { border:1px solid var(--line); background:var(--card); border-radius:8px; padding:8px 10px; white-space:pre-wrap; max-width:80ch } .t.user, .t.dashboard { align-self:flex-end; border-color:var(--acc) }
-.tool { color:var(--mut); font:12px ui-monospace,monospace } #perms .p { border:1px solid var(--warn); border-radius:8px; padding:8px; margin-bottom:8px; background:var(--card) }
-pre { margin:6px 0; white-space:pre-wrap; font:12px ui-monospace,monospace } form { display:flex; gap:8px } textarea { flex:1; min-height:44px; border:1px solid var(--line); border-radius:8px; padding:8px; background:var(--card); color:var(--fg); font:inherit }
-button.b { border:0; border-radius:8px; padding:8px 14px; background:var(--acc); color:var(--bg); cursor:pointer } button.d { background:var(--warn) } #status { min-height:18px }
+:root { --bg:#faf9f5; --fg:#1f1e1d; --mut:#7a766c; --line:#e6e2d6; --card:#fff; --acc:#d97757; --warn:#9a5b13; color-scheme:light }
+* { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--fg); font:14.5px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif }
+main { display:grid; grid-template-columns:210px minmax(0,1fr); height:100vh } @media (max-width:620px) { main { grid-template-columns:1fr; height:auto } }
+aside { border-right:1px solid var(--line); padding:14px; overflow:auto; background:#f4f1e8 } section { display:flex; flex-direction:column; min-height:0; padding:14px 18px; min-width:0 }
+h1 { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--mut); margin:0 0 10px }
+.s { display:block; width:100%; text-align:left; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:10px; padding:8px 10px; margin-bottom:8px; cursor:pointer; min-width:0 }
+.s > div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap } .s.on { border-color:var(--acc); box-shadow:0 0 0 2px #d9775722 }
+.m { color:var(--mut); font-size:12px } #head { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-bottom:8px }
+#turns { flex:1; overflow:auto; display:flex; flex-direction:column; gap:10px; padding:4px 0 12px }
+.t { border:1px solid var(--line); background:var(--card); border-radius:14px; padding:9px 13px; white-space:pre-wrap; overflow-wrap:anywhere; max-width:min(80ch,92%) }
+.t.user, .t.dashboard { align-self:flex-end; background:#f1ede2; border-color:#e6e2d6 }
+.tool { color:var(--mut); font:12px ui-monospace,monospace; overflow-wrap:anywhere } #perms .p { border:1px solid var(--warn); border-radius:10px; padding:10px; margin-bottom:8px; background:#fff8ee }
+pre { margin:6px 0; white-space:pre-wrap; overflow-wrap:anywhere; font:12px ui-monospace,monospace }
+form { display:flex; gap:8px; align-items:flex-end } textarea { flex:1; min-height:48px; max-height:140px; border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:var(--card); color:var(--fg); font:inherit; resize:vertical }
+textarea:focus { outline:2px solid #d9775744; border-color:var(--acc) }
+button.b { border:0; border-radius:10px; padding:11px 18px; background:var(--acc); color:#fff; font-weight:600; cursor:pointer } button.b:hover { filter:brightness(.95) } button.d { background:#8a4b2a } #status { min-height:18px }
 </style></head><body><main>
 <aside><h1>Live sessions</h1><div id="sessions"></div></aside>
 <section><div id="head" class="m">Pick a session.</div><div id="turns"></div><div id="perms"></div><div id="status" class="m"></div>
@@ -48,7 +53,7 @@ function perm(p) {
 async function sessions() {
   rows = await (await api('/sessions')).json();
   $('sessions').replaceChildren(...rows.map((s) => { const b = el('button', 's' + (s.sid === cur ? ' on' : ''));
-    b.append(el('div', '', s.writer + ' · ' + s.person), el('div', 'm', (s.busy ? 'busy' : 'idle') + ' · ' + (s.channel ? 'chat' : 'read-only') + ' · ' + s.sid.slice(-8)));
+    b.append(el('div', '', s.writer === 'lead' ? 'Lead' : s.writer), el('div', 'm', (s.busy ? 'busy' : 'idle') + ' · ' + (s.channel ? 'chat' : 'read-only') + ' · ' + s.sid.slice(-8)));
     b.onclick = () => open(s.sid); return b; }));
   if (!cur && rows.length) open((rows.find((s) => s.writer === 'lead') ?? rows[0]).sid);
   if (!rows.length) $('sessions').textContent = 'No live sessions. Start one with loom lead.';

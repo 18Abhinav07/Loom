@@ -49,44 +49,52 @@ export function Bench() {
   const pairs: J[] = b['e1-story']?.pairs ?? [];
   const e1 = cmp?.e1?.blind && cmp.e1.loom ? cmp.e1 : null;
   const tot = cmp?.e5?.length ? cmp.e5.reduce((a, s) => ({ l: a.l + s.loom.all_pass, b: a.b + s.blind.all_pass, n: a.n + s.loom.n }), { l: 0, b: 0, n: 0 }) : null;
+  const nOf = (x: number) => (x === 1 ? '1 pair' : `${x} pairs`);
   return (
     <div className="page bench">
-      <h1>StaleBench</h1>
-      <p className="dim">Same task, same repo, same prompts; pre-registered. </p><details className="card sp" style={{ marginBottom: 16 }}><summary><b>Read the pre-registration</b></summary><pre style={{ whiteSpace: 'pre-wrap', fontSize: 12.5, marginTop: 10 }}>{PREREG}</pre></details><p className="dim" style={{ display: 'none' }}></p>
+      <div className="bh">
+        <h1>StaleBench</h1>
+        <p className="dim">One agent changes a function; another agent depends on it. Does the merged code still pass its tests? Same model, same repo, same prompts, pre-registered.</p>
+      </div>
+      {e1 && (
+        <section className="card sp bhero">
+          <div className="bt bad"><b>{e1.blind.broke}<small>/{e1.blind.n}</small></b><span>broke without Loom</span></div>
+          <div className="bt good"><b>{e1.loom.broke}<small>/{e1.loom.n}</small></b><span>broke with Loom</span></div>
+          <div className="bt"><b>{e1.blind.n}</b><span>task pairs run ({pairs[0] ? 'one per function' : 'E1 core'})</span></div>
+        </section>)}
+      <p className="dim bscope">Scope: {e1 ? nOf(e1.blind.n) : 'E1'} of StaleBench, each run blind and with Loom. The 36-pair full set was not run. The live Django demo is one 3-task scenario, one run per side.</p>
       {cmp && (
-        <section className="card sp" style={{ marginBottom: 16 }}>
+        <section className="card sp">
           <h3>E1 · Does a stale function break the other agent's work?</h3>
-          {e1 && <p style={{ fontFamily: 'var(--serif)', fontSize: 26, margin: '6px 0 12px' }}><span className="bad">{e1.blind.broke} of {e1.blind.n}</span> broke without Loom. <span className="good">{e1.loom.broke} of {e1.loom.n}</span> with it.</p>}
           {e1 ? <>
             <Bar n={e1.blind.broke} of={e1.blind.n} tone="bad" text={`Without Loom ${e1.blind.broke}/${e1.blind.n} broke`} />
-            <Bar n={e1.loom.broke} of={e1.loom.n} tone="good" text={`With Loom ${e1.loom.broke}/${e1.loom.n}`} />
-          </> : <p className="dim">E1 not run yet — <code>bench/regen.sh</code></p>}
+            <Bar n={e1.loom.broke} of={e1.loom.n} tone="good" text={`With Loom ${e1.loom.broke}/${e1.loom.n} broke`} />
+          </> : <p className="dim">E1 not run yet. Run <code>bench/regen.sh</code>.</p>}
           {pairs.length > 0 && (
-            <div className="pairs">
-              <div className="pair dim" style={{ border: 0, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}><b>Function</b><span>How it changed</span><span>Without Loom</span><span>With Loom</span></div>
+            <div className="ptiles">
               {pairs.map((p) => (
-              <div key={p.id} className="pair" title={p.change}>
-                <b>{p.func}</b><span className="dim">{p.mech}</span>
-                <span className={p.blind?.broke ? 'bad' : 'good'}>{p.blind?.broke ? 'broke' : 'ok'}</span>
-                <span className={p.live?.broke ? 'bad' : 'good'}>{p.live ? (p.live.broke ? 'broke' : 'held') : 'none'}</span>
-              </div>))}
-              <p className="dim">Each row: the function, how it changed, then without Loom, then with Loom.</p>
+                <div key={p.id} className="ptile" title={p.change}>
+                  <b>{p.func}</b><span className="dim">{p.mech}</span>
+                  <div><span className={`pv ${p.blind?.broke ? 'bad' : 'good'}`}>{p.blind?.broke ? '✕ broke' : '✓ ok'}</span><span className="dim"> without</span></div>
+                  <div><span className={`pv ${!p.live ? '' : p.live.broke ? 'bad' : 'good'}`}>{!p.live ? '–' : p.live.broke ? '✕ broke' : '✓ held'}</span><span className="dim"> with</span></div>
+                </div>))}
             </div>)}
         </section>)}
-      {cmp && !tot && <section className="card sp" style={{ marginBottom: 16 }}><h3>E5 · Real agents on one repo</h3><p className="dim">Real agents: not run yet.</p></section>}
-      {cmp && tot && (
-        <section className="card sp" style={{ marginBottom: 16 }}>
+      {cmp && (
+        <section className="card sp">
           <h3>E5 · Real agents on one repo</h3>
-          <table className="grid"><thead><tr><th>Scenario</th><th>Without Loom passes</th><th>With Loom passes</th><th>Broken merged (without)</th><th>Merge conflicts (without)</th></tr></thead>
-            <tbody>{cmp.e5.map((s) => (
-              <tr key={s.scenario}><td>{label(s.scenario)}</td><td>{`${s.blind.all_pass}/${s.blind.n}`}</td><td>{`${s.loom.all_pass}/${s.loom.n}`}</td>
-                <td>{s.blind.broken}</td><td>{s.blind.conflicts}</td></tr>))}
-              <tr><td colSpan={5}><b className="stat">Loom {tot.l}/{tot.n} · blind {tot.b}/{tot.n}</b></td></tr>
-            </tbody></table>
+          {!tot ? <p className="dim">Real agents: not run yet.</p> : <>
+            <div className="tw"><table className="grid"><thead><tr><th>Scenario</th><th>Without Loom</th><th>With Loom</th><th>Broken merged</th><th>Merge conflicts</th></tr></thead>
+              <tbody>{cmp.e5.map((s) => (
+                <tr key={s.scenario}><td>{label(s.scenario)}</td><td>{`${s.blind.all_pass}/${s.blind.n} pass`}</td><td>{`${s.loom.all_pass}/${s.loom.n} pass`}</td>
+                  <td>{s.blind.broken}</td><td>{s.blind.conflicts}</td></tr>))}</tbody></table></div>
+            <p className="stat">With Loom {tot.l}/{tot.n} · without {tot.b}/{tot.n}. Small n: read it as a pilot, not a proof.</p>
+          </>}
         </section>)}
       {!cmp && <p className="dim">No comparison recorded yet. Run <code>bench/regen.sh</code>.</p>}
-      <details>
-        <summary>Raw records</summary>
+      <details className="card sp"><summary><b>Pre-registration</b></summary><pre style={{ whiteSpace: 'pre-wrap', fontSize: 12.5, marginTop: 10 }}>{PREREG}</pre></details>
+      <details className="card sp">
+        <summary><b>Raw records</b></summary>
         {SECTIONS.map(([e, k, title]) => {
           const v = b[k];
           const nested = v && Object.entries(v).find(([, x]) => x && typeof x === 'object' && !Array.isArray(x) && Object.values(x).every((y) => y && typeof y === 'object'));

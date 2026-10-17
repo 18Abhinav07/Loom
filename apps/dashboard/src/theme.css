@@ -614,3 +614,24 @@ main:has(.hs){display:flex;flex-direction:column;justify-content:center;min-heig
 .lrow{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line2)}
 .lrow:last-of-type{border-bottom:0}
 .lrow .chipr{font:12px var(--mono);color:var(--good);background:var(--good-soft);padding:3px 10px;border-radius:999px}
+
+/* home status cards */
+.stcs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px;max-width:460px}
+.stc{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;min-width:0}
+button.stc:hover{border-color:var(--ink3)}
+.stv{display:flex;align-items:center;gap:8px;font-size:16px}
+.sd{width:9px;height:9px;border-radius:50%;background:#B8B5AA;flex:none}
+.stv.run .sd{background:var(--accent);animation:blink 1.2s infinite}.stv.ok{color:#2E7D4F}.stv.ok .sd{background:#2E7D4F}.stv.bad{color:#B3402F}.stv.bad .sd{background:#B3402F}
+.hcopy p{max-width:46ch}
+/* benchmark */
+.bench{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.bench .sp{margin:0}.bh h1{margin:0 0 6px}.bh p{max-width:70ch;margin:0}
+.bhero{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:20px}
+.bt{display:flex;flex-direction:column;gap:2px}.bt b{font:400 44px/1 var(--serif)}.bt small{font-size:20px;color:var(--ink3)}.bt span{font-size:13px;color:var(--ink2)}
+.bt.bad b{color:#B3402F}.bt.good b{color:#2E7D4F}
+.bscope{margin:0;font-size:12.5px}
+.ptiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:14px}
+.ptile{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0;font-size:12.5px}
+.ptile b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pv{font-weight:600}.pv.bad{color:#B3402F}.pv.good{color:#2E7D4F}
+.tw{overflow-x:auto}
+@media (max-width:640px){.bhero{grid-template-columns:1fr}.stcs{grid-template-columns:1fr}}
