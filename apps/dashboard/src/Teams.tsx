@@ -200,7 +200,8 @@ function Drawer({ team, a, snap, cols, onClose, refresh }: { team: Team; a: Team
 
 // ---- the screen ------------------------------------------------------------------------------------------------------------------
 export function Teams({ go }: { go?: (v: string) => void }) {
-  const [teams, setTeams] = useState<Team[] | null>(null);
+  const [raw, setTeams] = useState<Team[] | null>(null);
+  const teams = useMemo(() => raw && raw.filter((t) => !t.blind), [raw]);   // this page is the with-Loom side; Home shows the without-Loom team
   const [allCols, setAllCols] = useState<Collision[]>([]);
   const [err, setErr] = useState('');
   const [pick, setPick] = useState('');

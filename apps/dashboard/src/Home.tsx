@@ -1,63 +1,44 @@
 import { useEffect, useState } from 'react';
-import { api, repoCwd, type PlanRow, type Team } from './api';
-import { agentColor } from './stream';
-import { DemoStage, LiveStage, Showdown } from './Demo';
-import { LiveShowdown } from './LiveShowdown';
-import { ago, landText, startedBy } from './explain';
-import { Bot, NO_REPO } from './ui';
+import { api, type Team } from './api';
+import { RunStage } from './Demo';
+import { Bot } from './ui';
 
 type Go = (view: string, say?: string) => void;
-const load = <T,>(path: string, set: (v: T) => void, fail?: (m: string) => void) => { api<T>(path).then(set).catch((e) => fail?.(String(e?.message ?? e))); };
 const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p;
 
-export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
-  const [cwd, setCwd] = useState('');
-  const [last, setLast] = useState<Team | null>(null);
-  const [repo, setRepo] = useState<'checking' | 'ready' | 'none'>('checking');
+/** What the Lead is asked when someone presses Plan: the StaleBench run, three Haiku agents each side. */
+export const STALEBENCH_ASK = 'Run the StaleBench workflow on this repo: check plan django-stalebench, then start it twice with model haiku: once with blind:true (three agents without Loom) and once normally (three agents with Loom). Report when both finish.';
+
+export function Home({ go, plan }: { go: Go; plan: () => void }) {
+  const [blind, setBlind] = useState<Team | null>(null);
+  const [loom, setLoom] = useState<Team | null>(null);
   useEffect(() => {
-    repoCwd().then(setCwd);
-    load<Team[]>('/teams', (t) => setLast([...t].sort((a, b) => b.startedAt - a.startedAt)[0] ?? null));
-    load<PlanRow[]>('/plans', () => setRepo('ready'), (m) => { if (NO_REPO.test(m)) setRepo('none'); });
+    const poll = () => api<Team[]>('/teams').then((ts) => {
+      const newest = (b: boolean) => [...ts].filter((t) => !!t.blind === b).sort((x, y) => y.startedAt - x.startedAt)[0] ?? null;
+      setBlind(newest(true)); setLoom(newest(false));
+    }).catch(() => {});
+    poll(); const t = setInterval(poll, 2500); return () => clearInterval(t);
   }, []);
+  const verdict = (t: Team | null) => !t ? 'not started' : t.state === 'running' ? 'running' : t.result ? (t.result.pass ? 'tests pass' : 'tests fail') : t.state;
   return (
     <section className="screen on">
-      <div className="hs">
-        <div className="hgrid">
-          <div className="hcopy">
-            {demo ? <span className="h5chip reveal"><span className="ldot" /><b>Demo</b> · a recorded run of 3 Claude agents on a real open-source Python codebase</span>
-              : repo === 'none'
-              ? <span className="h5chip reveal"><b>Not set up</b> · {base(cwd) || 'this folder'} · run <code>loom init</code></span>
-              : <span className="h5chip reveal"><span className="ldot" /><b>{repo === 'ready' ? 'Ready' : 'Checking'}</b> · {base(cwd) || 'this repo'}</span>}
-            <h1 className="reveal" style={{ '--i': 1 } as never}>Run a team of coding agents on one repo. <em>Nothing breaks.</em></h1>
-            <p className="reveal" style={{ '--i': 2 } as never}>Describe the work. The Lead splits it into tasks and starts one Claude agent per task. Loom makes them take turns on the same function, tells them when code they use changes, and only lets in work that still runs.</p>
-            <div className="hcta reveal" style={{ '--i': 3 } as never}><button className="btn or lg" onClick={() => go('lead')}>Plan with the Lead →</button><button className="btn ghost lg" onClick={() => go('bench')}>See the benchmark</button></div>
-            <p className="hnote reveal" style={{ '--i': 4 } as never}>Prefer the terminal? Run <code>loom lead</code> in this repo.</p>
+      <div className="hs"><div className="hgrid">
+        <div className="hcopy">
+          <span className="h5chip reveal"><span className="ldot" /><b>StaleBench</b> · Django · 3 Claude Haiku agents</span>
+          <h1 className="reveal" style={{ '--i': 1 } as never}>Three agents, one function. <em>Without Loom they collide.</em></h1>
+          <p className="reveal" style={{ '--i': 2 } as never}>Same task, same model, same repo. Here three agents work without Loom. On the Team page the same three work with Loom, sharing a FalkorDB graph that tells each one when code it depends on changes.</p>
+          <div className="hcta reveal" style={{ '--i': 3 } as never}>
+            <button className="btn or lg" onClick={plan}>Plan the run →</button>
+            <button className="btn ghost lg" onClick={() => go('teams')}>Team (with Loom)</button>
+            <button className="btn ghost lg" onClick={() => go('bench')}>Benchmark</button>
           </div>
-
-          <div className="card h5stage reveal" style={{ '--i': 2 } as never}>
-            {demo ? <DemoStage /> : <LiveStage idle={<>
-              <div className="bar"><span><b>0</b>agents</span><span><b>0</b>locked</span><span><b>0</b>waiting</span><span><b>{last ? last.agents.filter((a) => a.lands.includes('landed')).length : 0}</b>landed</span><span className="sp" /><span>{last ? 'last team · this repo' : 'live · this repo'}</span></div>
-              {last ? (
-                <div className="floor" style={{ height: 'auto', padding: '18px 20px' }} data-testid="last-team">
-                  <div className="h">{last.plan} · {last.state} {ago(last.startedAt)}</div>
-                  <p className="dim" style={{ margin: '2px 0 12px' }}>{startedBy(last)}</p>
-                  {last.agents.map((a) => (
-                    <div key={a.id} className="lrow">
-                      <Bot color={agentColor(a.id)} size={34} /><span><b>{a.id}</b> <span className="dim">{a.title}</span></span>
-                      <span className="chipr" title={a.lands.map(landText).join(' ')}>{a.lands.includes('landed') ? `landed${a.lands.length > 1 ? ` after ${a.lands.length - 1} sent back` : ''}` : (a.lands.at(-1) ?? a.state).replace(/_/g, ' ')}</span>
-                    </div>))}
-                  {last.landed && <p style={{ margin: '12px 0 0' }}>Merge it: <code>git merge {last.landed}</code></p>}
-                </div>
-              ) : (
-                <div className="floor" style={{ height: 300 }}><div className="empty" style={{ paddingTop: 40 }}><Bot color="#9A988F" size={56} mode="m-back" /><p style={{ marginTop: 10 }}>No agents working yet.</p><p className="dim">Start Claude in this repo, or start a team. Each agent shows up here the moment it begins.</p></div></div>)}
-              <button className="btn ghost sm" style={{ margin: '10px 14px' }} onClick={() => go('teams')}>Open Team →</button>
-            </>} />}
-          </div>
+          <p className="hnote reveal" style={{ '--i': 4 } as never}>{base(location.search ? new URLSearchParams(location.search).get('cwd') ?? '' : '') || 'this repo'} · without Loom: <b>{verdict(blind)}</b> · with Loom: <b>{verdict(loom)}</b></p>
         </div>
-        {demo && <LiveShowdown />}
-        {demo && <Showdown />}
-      </div>
-
+        <div className="card h5stage reveal" style={{ '--i': 2 } as never}>
+          {blind ? <RunStage run={blind.id} label="without Loom · live" pollMs={1500} />
+            : <div className="floor" style={{ height: 380 }}><div className="empty" style={{ paddingTop: 70 }}><Bot color="#9A988F" size={56} mode="m-back" /><p style={{ marginTop: 10 }}>No run yet.</p><p className="dim">Press Plan the run. The Lead starts three agents without Loom and three with it.</p></div></div>}
+        </div>
+      </div></div>
     </section>
   );
 }

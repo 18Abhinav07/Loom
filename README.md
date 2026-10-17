@@ -7,6 +7,47 @@ changes `slugify`'s contract while agent B writes a new caller against the old o
 every agent's in-flight edits, function-level leases, decisions and test evidence in one graph, and on every edit
 runs a traversal that tells exactly the affected agent, mid-work, what changed under it.
 
+## Quickstart
+
+```bash
+git clone https://github.com/18Abhinav07/Loom.git && cd Loom
+./scripts/install.sh        # needs Node 22+, Docker (for FalkorDB), and the `claude` CLI logged in
+```
+
+This puts a `loom` command on your PATH.
+
+**1. See it (the hackathon demo)**
+
+```bash
+loom demo                   # starts FalkorDB + the daemon, opens http://127.0.0.1:4317/?demo=1
+```
+
+- **Recorded run**: the hero plays 3 real Claude agents on Django (no API key, no agents running).
+- **Run it live**: pick Haiku / Sonnet / Opus and press *Run 3 agents with and without Loom*. Six real Claude sessions run on a
+  small Python repo (`~/.loom/demo-repo`, created for you) on **your own Claude plan**. Watch the locks, the notices and who lands.
+- **Benchmark**: the *Benchmark* tab shows the StaleBench runs shipped in `bench/results` (12 of 12 broke without Loom, 0 of 12 with it,
+  n=12 constructed pairs; see `bench/e5/PREREG.md`).
+
+**2. Use it on your own project**
+
+```bash
+cd /path/to/your/git/repo
+loom init                   # indexes the repo, installs the hooks + MCP, starts the daemon, opens the dashboard, starts the Lead
+```
+
+`loom init` leaves you in the **Lead**: a Claude session that talks with you, splits the work into tasks, and starts one agent per task.
+The dashboard for this repo is `http://127.0.0.1:4317/?cwd=<repo>` (run `loom ui` any time to reopen it). Then:
+
+| | |
+|---|---|
+| `loom lead` | start the Lead again |
+| `loom ui` | open this repo's dashboard |
+| `loom up` / `loom down` | start / stop the daemon (`init` and `demo` already start it) |
+| `loom team start --plan <file>` | start a team from a plan file (or approve one in the dashboard's Plans tab) |
+| `loom status` | what is running here |
+
+Or skip the Lead: run plain `claude` in the repo (and in its worktrees); the hooks coordinate them.
+
 ## What it does
 
 | | |

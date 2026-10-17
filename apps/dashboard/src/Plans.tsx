@@ -30,7 +30,9 @@ export function Plans({ go }: { go: (v: string) => void }) {
       <p>A plan is the Lead's split of one goal into tasks, each owning its own files. Ask the Lead to write one, or save <code>.loom/plans/&lt;name&gt;.md</code> yourself.</p>
       <div className="cardrow" style={{ justifyContent: 'center' }}><button className="btn or" onClick={() => go('lead')}>Open the Lead</button></div></div></section>);
   const check = () => post<Checked>('/plans/check', { slug: sel }).then(setChk).catch((e) => setMsg(e.message));
-  const start = () => post('/teams', { plan: sel }).then(() => go('teams')).catch((e) => setMsg(e.message));
+  const [model, setModel] = useState('sonnet');
+  const start = () => post('/teams', { plan: sel, model }).then(() => go('teams')).catch((e) => setMsg(e.message));
+  const compare = () => Promise.all([true, false].map((blind) => post('/teams', { plan: sel, model, blind }))).then(() => go('teams')).catch((e) => setMsg(e.message));
   const runs = teams.filter((t) => t.plan === sel).sort((a, b) => b.startedAt - a.startedAt);
   return (
     <section className="screen on page">
@@ -52,7 +54,9 @@ export function Plans({ go }: { go: (v: string) => void }) {
               </div>))}
             <div className="row reveal" style={{ gap: 10 }}>
               <button className="btn ghost" onClick={check}>Check plan</button>
+              <select aria-label="model" value={model} onChange={(e) => setModel(e.target.value)}><option value="haiku">Haiku</option><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select>
               <button className="btn or" disabled={chk?.ok === false} onClick={start}>Start team →</button>
+              <button className="btn ghost" disabled={chk?.ok === false} onClick={compare} title="Runs the same plan twice on this repo: once without Loom, once with it">Compare: without Loom vs with Loom</button>
             </div>
             {chk && (chk.ok ? <p className="good">Plan is valid: every task owns its files and nothing overlaps.</p> : <ul>{chk.problems.map((p) => <li key={p} className="bad">{p}</li>)}</ul>)}
             {chk?.warnings.length ? <ul>{chk.warnings.map((w) => <li key={w} className="dim">{w}</li>)}</ul> : null}

@@ -195,28 +195,50 @@ async function gitHook(name: string | undefined): Promise<number> {
   return 0;
 }
 
+async function ensureDb(): Promise<number> {
+  if (await pingDb()) return 0;
+  console.log('FalkorDB not reachable; starting it with docker compose');
+  try { execFileSync('docker', ['compose', '-f', join(loomRoot(), 'docker-compose.yml'), 'up', '-d', 'falkordb'], { stdio: 'inherit' }); }
+  catch { console.error('could not start FalkorDB: install Docker Desktop (or run any FalkorDB on :6379) and retry'); return 1; }
+  for (let i = 0; i < 30; i++) { if (await pingDb()) return 0; await sleep(1000); }
+  console.error('FalkorDB did not come up in 30s'); return 1;
+}
+
+async function ensureDaemon(): Promise<number> {
+  if (await healthy()) { console.log('already running'); return 0; }
+  mkdirSync(HOME, { recursive: true });
+  const log = openSync(join(HOME, 'daemon.log'), 'a');
+  const p = spawn(process.execPath, [join(loomRoot(), 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(loomRoot(), 'packages', 'daemon', 'src', 'server.ts')],
+    { detached: true, stdio: ['ignore', log, log], cwd: loomRoot() });
+  p.unref();
+  writeFileSync(join(HOME, 'daemon.pid'), String(p.pid));
+  for (let i = 0; i < 20; i++) { if (await healthy()) { console.log(`loom daemon up on ${DAEMON} (pid ${p.pid})`); return 0; } await sleep(500); }
+  console.error(`daemon did not answer in 10s; see ${join(HOME, 'daemon.log')}`); return 1;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   if (cmd === 'regions') return regionsCmd(rest);
   if (cmd === 'init') {
-    if (!(await pingDb())) {
-      console.log('FalkorDB not reachable; starting it with docker compose');
-      execFileSync('docker', ['compose', '-f', join(loomRoot(), 'docker-compose.yml'), 'up', '-d', 'falkordb'], { stdio: 'inherit' });
-      let ok = false;
-      for (let i = 0; i < 30 && !(ok = await pingDb()); i++) await sleep(1000);
-      if (!ok) { console.error('FalkorDB did not come up in 30s'); return 1; }
+    if (await ensureDb() !== 0) return 1;
+    if (spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: process.cwd() }).status !== 0) {   // a brand-new folder: make it a repo so teams can branch from it
+      execFileSync('git', ['init', '-q'], { cwd: process.cwd() }); console.log('not a git repo yet: ran git init here');
     }
     let r: Awaited<ReturnType<typeof initRepo>>;
     const tty = process.stdin.isTTY && process.stdout.isTTY;
-    const commit = rest.includes('--commit') ? true : rest.includes('--no-commit') || !tty ? false
-      : await askYes('Commit .loom/ now? It carries the regions lock and session records to teammates. [Y/n] ');
+    const commit = rest.includes('--commit');   // never blocks on a question: the dashboard and the Lead come first
     try {
       r = await initRepo(process.cwd(), { hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`, commit,
         mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs'), loomCmd: `node ${join(loomRoot(), 'packages', 'cli', 'dist', 'loom.cjs')}` });
     } catch (e) { console.error(`loom init: ${(e as Error).message}`); if (process.env.LOOM_DEBUG) console.error((e as Error).stack); return 1; }
     console.log(printSummary(r));
+    const dp = join(loomRoot(), 'demo', 'plans', 'django-stalebench.md'), dst = join(process.cwd(), '.loom', 'plans', 'django-stalebench.md');
+    if (existsSync(join(process.cwd(), 'django', 'utils', 'text.py')) && existsSync(dp) && !existsSync(dst)) {   // the hackathon repo: ship the StaleBench task as a ready plan
+      mkdirSync(dirname(dst), { recursive: true }); writeFileSync(dst, readFileSync(dp)); console.log('plan   .loom/plans/django-stalebench.md (the StaleBench task; or ask the Lead for your own)');
+    }
     if (r.withheld.length) console.log(`not in the first commit (secrets stay untracked): ${r.withheld.join(', ')}`);
     if (r.pending) console.log('next: commit .loom/ (it carries the regions lock and session records to teammates)');
+    if (await ensureDaemon() === 0) await main(['ui', ...(tty && !rest.includes('--no-lead') ? [] : ['--no-open'])]);
     if (!tty || rest.includes('--no-lead')) { console.log('start the lead with `loom lead`'); return 0; }
     return startLead(process.cwd(), {});
   }
@@ -239,17 +261,7 @@ export async function main(argv: string[]): Promise<number> {
       console.log(json ? JSON.stringify(r ?? null) : 'session finished'); return 0;
     });
   }
-  if (cmd === 'up') {
-    if (await healthy()) { console.log('already running'); return 0; }
-    mkdirSync(HOME, { recursive: true });
-    const log = openSync(join(HOME, 'daemon.log'), 'a');
-    const p = spawn(process.execPath, [join(loomRoot(), 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(loomRoot(), 'packages', 'daemon', 'src', 'server.ts')],
-      { detached: true, stdio: ['ignore', log, log], cwd: loomRoot() });
-    p.unref();
-    writeFileSync(join(HOME, 'daemon.pid'), String(p.pid));
-    for (let i = 0; i < 20; i++) { if (await healthy()) { console.log(`loom daemon up on ${DAEMON} (pid ${p.pid})`); return 0; } await sleep(500); }
-    console.error(`daemon did not answer in 10s; see ${join(HOME, 'daemon.log')}`); return 1;
-  }
+  if (cmd === 'up') return (await ensureDb()) || ensureDaemon();
   if (cmd === 'down') {
     // Kill whatever answers on the port (it reports its pid), not only the pid file: a lost or stale pid file left orphans running.
     const pf = join(HOME, 'daemon.pid');
@@ -441,6 +453,7 @@ export async function main(argv: string[]): Promise<number> {
     return teamCmd(['start', file, '--wait', ...(rest.includes('--blind') ? ['--blind'] : []), ...pass], DAEMON);
   }
   if (cmd === 'ui') {
+    if (!(await healthy())) await ensureDaemon();
     const run = flag(rest, '--run') ?? resolveAttach(process.cwd())?.run;
     const q = new URLSearchParams({ cwd: process.cwd(), ...(run ? { run } : {}) });
     const url = `${process.env.LOOM_UI ?? 'http://127.0.0.1:4317'}/?${q}`;
@@ -452,4 +465,4 @@ export async function main(argv: string[]): Promise<number> {
   return cmd ? 1 : 0;
 }
 
-if (process.argv[1]?.endsWith('loom.cjs')) main(process.argv.slice(2)).then((c) => process.exit(c));
+if (require.main === module) main(process.argv.slice(2)).then((c) => process.exit(c));

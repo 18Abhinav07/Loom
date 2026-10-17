@@ -67,6 +67,10 @@ export const fetchRuns = () => getJson<string[]>('/runs');
 export const fetchPlan = (run: string) => getJson<any>(`/plan?run=${encodeURIComponent(run)}`);
 
 /** Subscribe to one run: snapshot first, then events; fx older than 4 s are dropped. */
+let ctxP: Promise<string> | null = null;
+const runCwd = (): Promise<string> => (ctxP ??= new URLSearchParams(location.search).get('cwd') ? Promise.resolve(new URLSearchParams(location.search).get('cwd')!)
+  : getJson<{ cwd: string }>('/ctx').then((c) => c.cwd).catch(() => ''));
+
 export function useRun(run: string | null, pollMs = 0): RunState {
   const [st, setSt] = useState<RunState>(initial);
   useEffect(() => {
@@ -74,7 +78,7 @@ export function useRun(run: string | null, pollMs = 0): RunState {
     if (!run) return;
     let alive = true; let timer: ReturnType<typeof setTimeout> | undefined;
     const q = encodeURIComponent(run);
-    const refetch = () => getJson<Snapshot>(`/snapshot?run=${q}`).then((snap) => alive && setSt((p) => ({ ...p, snap }))).catch(() => {});
+    const refetch = () => runCwd().then((cwd) => getJson<Snapshot>(`/snapshot?run=${q}&cwd=${encodeURIComponent(cwd)}`)).then((snap) => alive && setSt((p) => ({ ...p, snap }))).catch(() => {});
     refetch();
     const es = typeof EventSource === 'undefined' ? null : new EventSource(`/events?run=${q}`);
     if (es) es.onopen = () => setSt((p) => ({ ...p, live: true }));

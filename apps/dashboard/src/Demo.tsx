@@ -9,8 +9,8 @@ export interface DemoAgent { id: string; name: string; status: 'working' | 'edit
 export interface DemoRow { name: string; holder?: string; waiter?: string }
 export interface DemoModel { agents: DemoAgent[]; files: { file: string; rows: DemoRow[] }[]; locked: number; waiting: number; landed: number; caption: string }
 
-const fn = (sym: string) => `${sym.split('::')[1] ?? sym}()`;
-const dir = (file: string) => file.split('/').slice(1).join('/') || file;
+const fn = (sym?: string | null) => `${(sym ?? '').split('::')[1] ?? sym ?? 'a function'}()`;
+const dir = (file?: string | null): string => (file ?? '').split('/').slice(1).join('/') || file || 'unknown';
 const symsOf = (e: LoomEvent) => ((e.data?.symbols as string[] | undefined) ?? []);
 
 export function demoModel(st: RunState): DemoModel {
@@ -27,7 +27,7 @@ export function demoModel(st: RunState): DemoModel {
     if (told) return { id: a.id, name, status: 'working', note: `told: ${fn([...events].reverse().find((e) => e.type === 'notice.created' && e.agent === a.id)?.data.symbol ?? '')} changed` };
     return { id: a.id, name, status: 'working', note: 'working' };
   });
-  const rows = new Map<string, DemoRow>(); const fileOf = (sym: string) => snap.nodes.find((n) => n.id === sym)?.file ?? sym.split('::')[0];
+  const rows = new Map<string, DemoRow>(); const fileOf = (sym: string) => (snap.nodes.find((n) => n.id === sym)?.file ?? (sym ?? '').split('::')[0]) || 'unknown';
   const row = (sym: string) => { let r = rows.get(sym); if (!r) rows.set(sym, r = { name: fn(sym) }); return r; };
   for (const l of snap.leases) row(l.symbol).holder = l.agent;
   for (const a of agents) { const d = a.status === 'waiting' ? denial(a.id) : null; if (d) row(symsOf(d)[0]).waiter = a.id; }
@@ -35,20 +35,12 @@ export function demoModel(st: RunState): DemoModel {
   for (const [sym, r] of rows) { const f = dir(fileOf(sym)); let g = files.find((x) => x.file === f); if (!g) files.push(g = { file: f, rows: [] }); g.rows.push({ name: r.name, holder: r.holder, waiter: r.waiter }); }
   const cap = [...events].reverse().find((e) => ['lease.denied', 'notice.created', 'change.landed', 'lease.granted'].includes(e.type));
   const l0 = snap.leases[0]; const n0 = snap.notices.at(-1);
-  const caption = !cap ? (l0 ? `${l0.agent} locks ${fn(l0.symbol)} before editing it.` : n0 ? `${n0.agent} is told: ${n0.text.split('\n')[0].replace(/^\[loom\] /, '')}` : 'Starting the run…')
+  const caption = !cap ? (l0 ? `${l0.agent} locks ${fn(l0.symbol)} before editing it.` : n0 ? `${n0.agent} is told: ${(n0.text ?? '').split('\n')[0].replace(/^\[loom\] /, '')}` : 'Starting the run…')
     : cap.type === 'lease.denied' ? `${cap.agent} needs ${fn(symsOf(cap)[0])}, which ${cap.data.holder} holds. ${cap.agent} waits its turn instead of colliding.`
     : cap.type === 'notice.created' ? `${cap.data.author} changed ${fn(cap.data.symbol)}. ${cap.agent} calls it, so ${cap.agent} is told.`
     : cap.type === 'change.landed' ? `${cap.agent}'s work merged, every call still fits, tests pass: it landed on the shared branch.`
     : `${cap.agent} locks ${fn(symsOf(cap)[0])} before editing it.`;
   return { agents, files, locked: snap.leases.length, waiting: agents.filter((a) => a.status === 'waiting').length, landed: landedBy.size, caption };
-}
-
-export function DemoStage() {
-  const [run, setRun] = useState<string | null>(null);
-  const [err, setErr] = useState('');
-  const start = () => { setRun(null); setErr(''); post<{ run: string }>('/demo/replay', { speed: 3, maxGapMs: 1200 }).then((r) => setRun(r.run)).catch((e) => setErr((e as Error).message)); };
-  useEffect(start, []);
-  return <RunStage run={run} label="demo · recorded run" err={err ? `Could not start the demo: ${err}` : ''} onReplay={start} />;
 }
 
 /** The agents working in this repo right now: any run the daemon holds that is not the demo replay. Empty until a session registers. */
@@ -97,32 +89,3 @@ export function RunStage({ run, label, err, onReplay, pollMs }: { run: string | 
   );
 }
 
-/** The 3 v 3 head-to-head from StaleBench: per scenario, three real Haiku runs without Loom next to three with it. Numbers come from /bench/compare, nothing is estimated. */
-export function Showdown() {
-  const [cmp, setCmp] = useState<Compare | null>(null);
-  useEffect(() => { getJson<Compare>('/bench/compare').then(setCmp).catch(() => setCmp(null)); }, []);
-  const rows = cmp?.e5 ?? [];
-  if (!rows.length) return null;
-  const trials = (side: { all_pass: number; n: number; broken: number; conflicts: number }) => {
-    const out: ('pass' | 'broke' | 'conflict')[] = [];
-    for (let i = 0; i < side.all_pass; i++) out.push('pass');
-    for (let i = 0; i < side.conflicts; i++) out.push('conflict');
-    while (out.length < side.n) out.push('broke');
-    return out.slice(0, side.n);
-  };
-  const word = { pass: 'passed', broke: 'broke', conflict: 'conflict' } as const;
-  return (
-    <div className="card showdown" data-testid="showdown">
-      <h3>3 agents without Loom vs 3 agents with it</h3>
-      <p className="dim">Same Claude Haiku agents, same open-source Python codebase, same tasks. Each robot is one run: did the merged work pass its tests?</p>
-      <div className="sdgrid">
-        {rows.map((s) => (['blind', 'loom'] as const).map((c) => (
-          <div key={`${s.scenario}${c}`} className={`sdcol ${c}`}>
-            <div className="sdh"><b>{c === 'loom' ? 'With Loom' : 'Without Loom'}</b><span className="dim">{s.scenario.replace(/^[a-z]\d+_/, '').replace(/_/g, ' ')}</span></div>
-            <div className="sdbots">{trials(s[c]).map((t, i) => <div key={i} className={`sdbot ${t}`}><Bot color={t === 'pass' ? '#3F8F6B' : '#C05A4A'} size={44} /><span>{word[t]}</span></div>)}</div>
-            <div className="sdn"><b>{s[c].all_pass}/{s[c].n}</b> passed</div>
-          </div>)))}
-      </div>
-    </div>
-  );
-}
