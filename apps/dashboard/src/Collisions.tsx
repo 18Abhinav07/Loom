@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, couldNot, type Collision } from './api';
+import { filesText, person } from './explain';
 import { Problem } from './ui';
 
 const KINDS = ['lock_denied', 'lock_wait', 'caller_warning', 'landing_rejected', 'merge_conflict', 'out_of_scope', 'divergence', 'stale_version'];
@@ -20,10 +21,10 @@ export function Collisions() {
       {!rows.length ? <p className="dim">No collisions. Nobody has stepped on anyone else's work.</p>
         : rows.map((c) => (
           <div key={c.id} className="card sp" style={{ marginTop: 10, borderLeft: '4px solid var(--accent)' }}>
-            <div className="row"><b>{c.kind}</b><span className={`state ${c.outcome === 'open' ? 'st-waiting' : 'st-landed'}`}>{c.outcome}</span></div>
-            <div>{c.parties.map((p) => p.person).join(' · ')}</div>
-            <div className="dim">{c.region.join(', ')}</div>
-            <div>{c.detail}</div>
+            <div className="row"><b>{c.kind.replace(/_/g, " ")}</b><span className={`state ${c.outcome === 'open' ? 'st-waiting' : 'st-landed'}`}>{c.outcome}</span></div>
+            <div>{c.parties.map((p) => `${(p as { agent?: string }).agent ?? 'agent'} (${person(p.person)})`).join(' · ')}</div>
+            <div className="dim">{filesText(c.region, 4)}</div>
+            {c.detail && <div>{c.detail.length > 240 ? `${c.detail.slice(0, 240)}…` : c.detail}</div>}
           </div>))}
     </div>
   );

@@ -183,7 +183,7 @@ main{padding:22px 28px 60px;max-width:1520px;margin:0 auto}
 .lmsg.g .k{color:var(--good)}
 body{padding-bottom:72px}
 /* ============ HOME v5: hero stage · what · how ============ */
-.hs{min-height:calc(100vh - 66px);display:flex;flex-direction:column;justify-content:center;padding:34px 0 46px;position:relative}
+.hs{display:flex;flex-direction:column;justify-content:center;padding:28px 0 40px;position:relative}
 .hs + .hs{border-top:1px solid var(--line)}
 .hgrid{display:grid;grid-template-columns:minmax(0,.82fr) minmax(0,1.18fr);gap:44px;align-items:center}
 .hcopy h1{font:600 46px/1.08 var(--serif);letter-spacing:-.025em}

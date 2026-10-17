@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, couldNot, post, type Collision, type Team, type TeamAgent } from './api';
 import { agentColor } from './stream';
+import { ago, filesText, landText, startedBy } from './explain';
 import { Bot, Problem } from './ui';
 
 const WORKING = new Set(['working', 'starting']);
@@ -27,7 +28,8 @@ function AgentCard({ team, a, refresh }: { team: Team; a: TeamAgent; refresh: ()
       </div>
       <div className="agbody">
         {a.after.length > 0 && <div className="kv2"><span>After</span><span>{a.after.map((x) => <span key={x} className="chipr chipw">{x}</span>)}</span></div>}
-        <div className="kv2"><span>Landed</span><span>{a.lands.length ? a.lands.map((l) => <span key={l} className="chipr">{l}</span>) : <span className="dim">nothing yet</span>}{a.resumed > 0 && <span className="dim"> · resumed {a.resumed}×</span>}</span></div>
+        <div className="kv2"><span>Landed</span><span>{a.lands.length ? a.lands.map((l, i) => <span key={i} className="chipr" title={landText(l)}>{l.replace(/_/g, ' ')}</span>) : <span className="dim">nothing yet</span>}{a.resumed > 0 && <span className="dim"> · resumed {a.resumed}×</span>}</span></div>
+        {a.lands.length > 0 && <div className="dim" style={{ fontSize: 12.5 }}>{a.lands.map((l, i) => <div key={i}>{i + 1}. {landText(l)}</div>)}</div>}
         {a.lastReply && <div className="term"><span className="p">›</span> {a.lastReply}</div>}
         <div className="cardrow">
           <input aria-label="message to agent" value={text} onChange={(e) => setText(e.target.value)} placeholder="Message this agent" />
@@ -80,7 +82,7 @@ export function Teams({ go }: { go?: (v: string) => void }) {
         <span className={`state st-${current.state === 'running' ? 'working' : current.state === 'done' ? 'landed' : 'idle'}`}>{current.state}</span>
         {current.state === 'running' && <button className="btn ghost" onClick={stop}>Stop team</button>}
       </div>
-      <p className="pgsub reveal">{current.goal}</p>
+      <p className="pgsub reveal">{current.goal} <span className="dim">· started {ago(current.startedAt)} by {startedBy(current)}{current.landed ? <> · branch <code>{current.landed}</code></> : null}</span></p>
       <div className="two" style={{ gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)' }}>
         <div className="stack">
           <div className="steps" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))' }}>{current.agents.map((a) => <AgentCard key={a.id} team={current} a={a} refresh={refresh} />)}</div>
@@ -91,7 +93,7 @@ export function Teams({ go }: { go?: (v: string) => void }) {
           <div className="expl">Newest first.</div>
           <div className="moves">{!cols.length ? <div className="emptyfeed">No collisions so far. Nobody has stepped on anyone else's work.</div>
             : cols.slice(0, 20).map((c) => { const [k, label] = KIND[c.kind] ?? ['notice', c.kind]; const color = { wait: 'var(--wait)', notice: 'var(--blue-d)', back: 'var(--bad)' }[k]; return (
-              <div key={c.id} className="mv" style={{ '--kc': color } as never}><div className="t">{label}</div><p>{c.region.join(', ')} · {c.outcome}</p><p>{c.detail}</p></div>); })}</div>
+              <div key={c.id} className="mv" style={{ '--kc': color } as never}><div className="t">{label}</div><p>{filesText(c.region)} · {c.outcome}</p>{c.detail && <p>{c.detail}</p>}</div>); })}</div>
         </div>
       </div>
     </section>
