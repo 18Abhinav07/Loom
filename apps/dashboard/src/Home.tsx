@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api, post, repoCwd, type Compare, type PlanRow, type Team } from './api';
 import { agentColor } from './stream';
-import { DemoStage } from './Demo';
+import { DemoStage, LiveStage } from './Demo';
 import { Bot, NO_REPO } from './ui';
 
 type Go = (view: string, say?: string) => void;
 const load = <T,>(path: string, set: (v: T) => void, fail?: (m: string) => void) => { api<T>(path).then(set).catch((e) => fail?.(String(e?.message ?? e))); };
-const EXAMPLES = ['Add type hints to the utils package', 'Make slugify() strict about unicode', 'Split the largest module into smaller ones'];
 const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p;
 
 const FEATURES = [
@@ -29,9 +28,7 @@ export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [plan, setPlan] = useState('');
   const [brief, setBrief] = useState('');
-  const [teams, setTeams] = useState<Team[] | null>(null);
   const [msg, setMsg] = useState('');
-  const [ask, setAsk] = useState('');
   const [cwd, setCwd] = useState('');
   const [repo, setRepo] = useState<'checking' | 'ready' | 'none'>('checking');
   useEffect(() => {
@@ -39,8 +36,6 @@ export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
     load<Compare>('/bench/compare', setCmp);
     load<PlanRow[]>('/plans', (p) => { setRepo('ready'); setPlans(p); setPlan((x) => x || p[0]?.slug || ''); }, (m) => { if (NO_REPO.test(m)) setRepo('none'); });
     load<{ text: string }>('/brief', (b) => { setRepo('ready'); setBrief(b.text); });
-    const poll = () => load<Team[]>('/teams', setTeams);
-    poll(); const t = setInterval(poll, 4000); return () => clearInterval(t);
   }, []);
   const e5 = cmp?.e5?.length ? cmp.e5.reduce((a, s) => ({ l: a.l + s.loom.all_pass, b: a.b + s.blind.all_pass, n: a.n + s.loom.n }), { l: 0, b: 0, n: 0 }) : null;
   const e1 = cmp?.e1?.blind && cmp.e1.loom ? cmp.e1 : null;
@@ -48,9 +43,6 @@ export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
     setMsg('');
     try { await post('/teams', { plan }); go('teams'); } catch (e) { setMsg((e as Error).message); }
   };
-  const running = (teams ?? []).filter((t) => t.state !== 'done' && t.state !== 'stopped');
-  const live = running[0];
-  const count = (s: string[]) => live?.agents.filter((a) => s.includes(a.state)).length ?? 0;
   return (
     <section className="screen on">
       <div className="hs">
@@ -62,41 +54,15 @@ export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
               : <span className="h5chip reveal"><span className="ldot" /><b>{repo === 'ready' ? 'Ready' : 'Checking'}</b> · {base(cwd) || 'this repo'}</span>}
             <h1 className="reveal" style={{ '--i': 1 } as never}>Run a team of coding agents on one repo. <em>Nothing breaks.</em></h1>
             <p className="reveal" style={{ '--i': 2 } as never}>Describe the work. The Lead splits it into tasks and starts one Claude agent per task. Loom makes them take turns on the same function, tells them when code they use changes, and only lets in work that still runs.</p>
-            <div className="card ask reveal" style={{ '--i': 3 } as never}>
-              <textarea id="askbox" aria-label="what to build" value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="e.g. Make slugify() strict about unicode, and render admin change messages as “a, b and c”…" />
-              <div className="row"><span className="hint">or <code>loom lead</code> in the terminal</span><button className="btn or" onClick={() => go('lead', ask.trim())}>Plan with the Lead →</button></div>
-            </div>
-            <div className="examples reveal" style={{ '--i': 4 } as never}>{EXAMPLES.map((x) => <button key={x} onClick={() => setAsk(x)}>{x}</button>)}</div>
+            <div className="row reveal" style={{ '--i': 3, gap: 12, alignItems: 'center' } as never}><button className="btn or" onClick={() => go('lead')}>Plan with the Lead →</button><span className="hint">or <code>loom lead</code> in the terminal</span></div>
           </div>
 
           <div className="card h5stage reveal" style={{ '--i': 2 } as never}>
-            {demo ? <DemoStage /> : (<>
-            <div className="bar">
-              <span><b>{live?.agents.length ?? 0}</b>agents</span><span><b>{count(['working', 'starting'])}</b>working</span>
-              <span><b>{count(['waiting', 'blocked'])}</b>waiting</span><span><b>{live ? live.agents.reduce((n, a) => n + a.lands.length, 0) : 0}</b>landed</span>
-              <span className="sp" /><span>{live ? 'live now' : 'no team yet'}</span>
-            </div>
-            {(() => {
-              const ags = live?.agents.slice(0, 4) ?? [];
-              const landed = live ? live.agents.reduce((n, a) => n + a.lands.length, 0) : 0;
-              return (
-                <div className="floor" style={{ height: 340 }}>
-                  {ags.length === 0
-                    ? <div className="empty" style={{ paddingTop: 40 }}><Bot color="#9A988F" size={56} mode="m-back" /><p style={{ marginTop: 10 }}>No team running.</p><p className="dim">Describe some work on the left, or start a team from a plan below.</p></div>
-                    : ags.map((a, i) => (
-                      <div key={a.id} className="agent5" style={{ [i % 2 ? 'right' : 'left']: '2%', top: 8 + Math.floor(i / 2) * 120 } as never}>
-                        <div className="bw"><Bot color={agentColor(a.id)} size={54} mode={a.state === 'working' || a.state === 'starting' ? 'm-work' : ''} /></div>
-                        <div className="nm">{a.id}</div><div className="st">{a.title || a.state}</div>
-                      </div>))}
-                  <div className="h5lane">
-                    <div className="lbl">Shared branch</div>
-                    <div className="gates"><div className="gate"><i>·</i>Merges</div><span className="garrow">→</span><div className="gate"><i>·</i>Callers fit</div><span className="garrow">→</span><div className="gate"><i>·</i>Tests pass</div></div>
-                    <div className="landed5">{Array.from({ length: 3 }, (_, i) => <div key={i} className="slot">{i < landed ? '✓' : ''}</div>)}</div>
-                  </div>
-                </div>);
-            })()}
-            {live && <button className="btn ghost sm" style={{ margin: '10px 14px' }} onClick={() => go('teams')}>Open the team →</button>}
-            </>)}
+            {demo ? <DemoStage /> : <LiveStage idle={<>
+              <div className="bar"><span><b>0</b>agents</span><span><b>0</b>locked</span><span><b>0</b>waiting</span><span><b>0</b>landed</span><span className="sp" /><span>live · this repo</span></div>
+              <div className="floor" style={{ height: 340 }}><div className="empty" style={{ paddingTop: 40 }}><Bot color="#9A988F" size={56} mode="m-back" /><p style={{ marginTop: 10 }}>No agents working yet.</p><p className="dim">Start Claude in this repo, or start a team. Each agent shows up here the moment it begins.</p></div></div>
+              <button className="btn ghost sm" style={{ margin: '10px 14px' }} onClick={() => go('teams')}>Open Team →</button>
+            </>} />}
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 // Demo mode: replays the recorded real run (3 Claude agents on one codebase) through the same event stream a live team uses.
 import { useEffect, useState } from 'react';
 import { post } from './api';
+import { getJson } from './stream';
 import { agentColor, useRun, type LoomEvent, type RunState } from './stream';
 import { Bot } from './ui';
 
@@ -46,15 +47,31 @@ export function DemoStage() {
   const [err, setErr] = useState('');
   const start = () => { setRun(null); setErr(''); post<{ run: string }>('/demo/replay', { speed: 1.5 }).then((r) => setRun(r.run)).catch((e) => setErr((e as Error).message)); };
   useEffect(start, []);
+  return <RunStage run={run} label="demo · recorded run" err={err ? `Could not start the demo: ${err}` : ''} onReplay={start} />;
+}
+
+/** The agents working in this repo right now: any run the daemon holds that is not the demo replay. Empty until a session registers. */
+export function LiveStage({ idle }: { idle: React.ReactNode }) {
+  const [run, setRun] = useState<string | null>(null);
+  useEffect(() => {
+    const poll = () => getJson<string[]>('/runs').then((rs) => { const r = rs.filter((x) => !x.startsWith('coord:replay')); setRun((p) => (p && r.includes(p) ? p : r[r.length - 1] ?? null)); }).catch(() => {});
+    poll(); const t = setInterval(poll, 3000); return () => clearInterval(t);
+  }, []);
+  const st = useRun(run);
+  if (!run || !st.snap.agents.length) return <>{idle}</>;
+  return <RunStage run={run} label="live · this repo" />;
+}
+
+function RunStage({ run, label, err, onReplay }: { run: string | null; label: string; err?: string; onReplay?: () => void }) {
   const m = demoModel(useRun(run));
   return (
     <>
       <div className="bar">
         <span><b>{m.agents.length}</b>agents</span><span><b>{m.locked}</b>locked</span><span><b>{m.waiting}</b>waiting</span><span><b>{m.landed}</b>landed</span>
-        <span className="sp" /><span>demo · recorded run</span>
+        <span className="sp" /><span>{label}</span>
       </div>
       <div className="floor" style={{ height: 380 }}>
-        {err && <p className="bad" style={{ padding: 16 }}>Could not start the demo: {err}</p>}
+        {err && <p className="bad" style={{ padding: 16 }}>{err}</p>}
         {m.agents.map((a, i) => (
           <div key={a.id} className="agent5" style={{ [i % 2 ? 'right' : 'left']: '1%', top: 8 + Math.floor(i / 2) * 150 + (i % 2 ? 70 : 0) } as never}>
             <div className="bw"><Bot color={agentColor(a.id)} size={54} mode={a.status === 'editing' ? 'm-work' : a.status === 'waiting' ? 'm-sleep' : ''} /></div>
@@ -74,7 +91,7 @@ export function DemoStage() {
           <div className="landed5">{Array.from({ length: Math.max(3, m.agents.length) }, (_, i) => <div key={i} className="slot">{i < m.landed ? '✓' : ''}</div>)}</div>
         </div>
       </div>
-      <div className="h5cap"><span className="n">{m.landed + m.waiting + 1}</span><p>{m.caption}</p><div className="ctl"><button onClick={start} title="Replay" aria-label="Replay">↺</button></div></div>
+      <div className="h5cap"><span className="n">{m.landed + m.waiting + 1}</span><p>{m.caption}</p>{onReplay && <div className="ctl"><button onClick={onReplay} title="Replay" aria-label="Replay">↺</button></div>}</div>
     </>
   );
 }

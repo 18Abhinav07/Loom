@@ -33,12 +33,12 @@ it('the top bar names the repo, has one tab per job, and Code Map holds Function
   expect(screen.getByRole('button', { name: 'Growth' })).toBeTruthy();
 });
 
-it('Plan with the Lead hands the typed brief to the lead page', async () => {
-  mockApi({ ...base, '/teams': [], '/plans': [], '/brief': { text: '' } });
+it('Home has no brief box: Plan with the Lead is just a button that opens the Lead page', async () => {
+  mockApi({ ...base, '/teams': [], '/plans': [], '/brief': { text: '' }, '/runs': [] });
   const { container } = render(<App />);
-  fireEvent.change(await screen.findByLabelText('what to build'), { target: { value: 'make slugify strict' } });
-  fireEvent.click(screen.getByRole('button', { name: /Plan with the Lead/ }));
-  await waitFor(() => expect(container.querySelector('iframe')?.getAttribute('src')).toBe('/lead?say=make%20slugify%20strict'));
+  fireEvent.click(await screen.findByRole('button', { name: /Plan with the Lead/ }));
+  expect(screen.queryByLabelText('what to build')).toBeNull();
+  await waitFor(() => expect(container.querySelector('iframe')?.getAttribute('src')).toMatch(/^\/lead/));
 });
 
 it('the live dot shows on Team only while a team is running', async () => {
@@ -48,15 +48,21 @@ it('the live dot shows on Team only while a team is running', async () => {
   await waitFor(() => expect(container.querySelector('.tab .ldot')).toBeTruthy());
 });
 
-it('Home draws each running agent as a robot on the floor with its task and the landed count', async () => {
-  const t = { id: 't', plan: 'p', goal: 'g', state: 'running', startedAt: 1, agents: [
-    { id: 'slug', title: 'Make slugify strict', state: 'working', after: [], sid: 's', branch: 'b', lands: [] },
-    { id: 'caps', title: 'Fix capfirst', state: 'done', after: [], sid: 's2', branch: 'b2', lands: ['c1'] }] };
-  mockApi({ ...base, '/teams': [t], '/plans': [], '/brief': { text: '' } });
+it('before any team, Home shows the agents already working in the repo, with their locks', async () => {
+  const snap = { nodes: [{ id: 'a.py::f', qname: 'f', file: 'pkg/a.py', kind: 'function' }], edges: [], notices: [],
+    agents: [{ id: 'one', taskTitle: 'my session' }, { id: 'two' }], leases: [{ agent: 'one', symbol: 'a.py::f' }] };
+  mockApi({ ...base, '/teams': [], '/plans': [], '/brief': { text: '' }, '/runs': ['coord:local:app'], '/snapshot': snap });
+  vi.stubGlobal('EventSource', class { onopen = null; onerror = null; onmessage = null; close() {} });
   const { container } = render(<App />);
-  expect(await screen.findByText('Make slugify strict')).toBeTruthy();
+  expect(await screen.findByText('my session')).toBeTruthy();
   expect(container.querySelectorAll('.floor .agent5').length).toBe(2);
-  expect(container.querySelectorAll('.landed5 .slot')[0].textContent).toBe('✓');
+  expect(screen.getByText(/live · this repo/)).toBeTruthy();
+});
+
+it('before anything is running, Home says so instead of drawing an empty stage', async () => {
+  mockApi({ ...base, '/teams': [], '/plans': [], '/brief': { text: '' }, '/runs': [] });
+  render(<App />);
+  expect(await screen.findByText('No agents working yet.')).toBeTruthy();
 });
 
 it('the Demo button replays the recorded run on Home, and Exit demo returns to the real team', async () => {

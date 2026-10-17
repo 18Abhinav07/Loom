@@ -20,6 +20,6 @@ describe('Home', () => {
   it('empty /teams shows "No team running"', async () => {
     mockApi(routes);
     render(<Home go={() => {}} />);
-    await waitFor(() => expect(screen.getByText(/No team running/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/No agents working yet/)).toBeTruthy());
   });
 });
