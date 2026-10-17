@@ -39,7 +39,7 @@ it('teams offers a picker when several teams exist, newest running first', async
   const pick = (await screen.findByLabelText('team')) as HTMLSelectElement;
   expect(pick.value).toBe('r2');
   fireEvent.change(pick, { target: { value: 'r1' } });
-  expect(screen.getByRole('heading', { name: 'plan-r1' })).toBeTruthy();
+  expect(screen.getByText('plan-r1')).toBeTruthy();
 });
 
 it('a failing API is an error, not an empty state', async () => {

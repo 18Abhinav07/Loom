@@ -28,6 +28,6 @@ export interface Compare {
 }
 export interface Cell { all_pass: number; n: number; broken: number; conflicts: number }
 export interface TeamAgent { id: string; title: string; state: string; after: string[]; sid: string; branch: string; lands: string[]; resumed: number; lastReply?: string }
-export interface Team { id: string; plan: string; goal: string; state: 'running' | 'done' | 'stopped'; agents: TeamAgent[]; startedAt: number; person?: string | null; leadSid?: string | null; landed?: string; blind?: boolean; result?: { pass: boolean; out: string } | null }
+export interface Team { id: string; plan: string; goal: string; state: 'running' | 'done' | 'stopped'; agents: TeamAgent[]; startedAt: number; person?: string | null; leadSid?: string | null; landed?: string; blind?: boolean; result?: { pass: boolean; out: string } | null; events?: Collision[] }
 export interface PlanRow { slug: string; goal: string; tasks: number }
 export interface Collision { id: string; kind: string; region: string[]; parties: { person: string; session: string }[]; outcome: string; at: number; detail: string }

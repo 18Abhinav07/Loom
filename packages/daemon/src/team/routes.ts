@@ -73,6 +73,27 @@ export class TeamRoutes {
     if (repo) this.repos.add(repo);
     return [...this.teams.values()].map((t) => t.view()).concat(this.history(repo)).filter((v) => !repo || v.repo === repo).sort((a, b) => b.startedAt - a.startedAt);
   }
+  /** What one agent has said and done, read from its stream-json trace: assistant text and tool calls, in order. */
+  agentHistory(id: string, agent: string): { ok: true; items: { kind: 'say' | 'tool'; text: string }[] } | Ok {
+    const v = this.get(id);
+    if (!v) return this.no(id);
+    if (!/^[\w.-]+$/.test(agent)) return { ok: false, error: `no agent ${agent}` };
+    const f = join(v.repo, '.git', 'loom', 'runs', id.slice(-8).toLowerCase(), `${agent}.jsonl`);
+    if (!existsSync(f)) return { ok: true, items: [] };
+    const items: { kind: 'say' | 'tool'; text: string }[] = [];
+    for (const line of readFileSync(f, 'utf8').split('\n')) {
+      let j: any; try { j = JSON.parse(line); } catch { continue; }
+      if (j.type !== 'assistant') continue;
+      for (const c of j.message?.content ?? []) {
+        if (c.type === 'text' && c.text?.trim()) items.push({ kind: 'say', text: clip(c.text, 800) });
+        else if (c.type === 'tool_use') {
+          const i = c.input ?? {};
+          items.push({ kind: 'tool', text: `${String(c.name).replace(/^mcp__loom__/, 'loom · ')} ${clip(String(i.file_path ?? i.command ?? i.pattern ?? i.symbol ?? i.symbols ?? ''), 120)}`.trim() });
+        }
+      }
+    }
+    return { ok: true, items: items.slice(-200) };
+  }
   private no(id: string): Ok { return { ok: false, error: `no team ${id}` }; }
   async stop(id: string): Promise<Ok> { const t = this.teams.get(id); if (!t) return this.no(id); await t.stop(); return { ok: true }; }
   async merge(id: string, into?: string) { const t = this.teams.get(id); return t ? t.merge(into) : this.no(id); }

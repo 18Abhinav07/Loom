@@ -5,7 +5,7 @@ export interface Node { id: string; qname: string; file: string; kind: string }
 export interface Lease { agent: string; symbol: string; mode: string; contract: boolean; expires: number }
 export interface Agent { id: string; state: string; heartbeatAt: number | null; task: string | null; taskTitle: string | null }
 export interface Notice { id: string; agent: string; author: string; status: string; kind?: string; text: string }
-export interface Snapshot { nodes: Node[]; edges: { from: string; to: string }[]; agents: Agent[]; leases: Lease[]; notices: Notice[] }
+export interface Snapshot { nodes: Node[]; edges: { from: string; to: string }[]; agents: Agent[]; leases: Lease[]; notices: Notice[]; waits?: { agent: string; symbol: string }[]; changed?: string[] }
 export interface LoomEvent { type: string; at: number; run: string; agent?: string; data: Record<string, any> }
 /** A transient effect the graph animates: a notice pulse along a path, or a denied-lease flash. */
 export interface Fx { kind: 'pulse' | 'deny'; ids: string[]; at: number }
@@ -76,10 +76,10 @@ export function useRun(run: string | null, pollMs = 0): RunState {
     const q = encodeURIComponent(run);
     const refetch = () => getJson<Snapshot>(`/snapshot?run=${q}`).then((snap) => alive && setSt((p) => ({ ...p, snap }))).catch(() => {});
     refetch();
-    const es = new EventSource(`/events?run=${q}`);
-    es.onopen = () => setSt((p) => ({ ...p, live: true }));
-    es.onerror = () => setSt((p) => ({ ...p, live: false }));
-    es.onmessage = (m) => {
+    const es = typeof EventSource === 'undefined' ? null : new EventSource(`/events?run=${q}`);
+    if (es) es.onopen = () => setSt((p) => ({ ...p, live: true }));
+    if (es) es.onerror = () => setSt((p) => ({ ...p, live: false }));
+    if (es) es.onmessage = (m) => {
       const e = JSON.parse(m.data) as LoomEvent;
       setSt((p) => reduce(p, e));
       if (e.type === 'change.recorded' || e.type === 'lease.granted' || e.type === 'agent.registered') {
@@ -88,7 +88,7 @@ export function useRun(run: string | null, pollMs = 0): RunState {
     };
     const poll = pollMs ? setInterval(refetch, pollMs) : undefined;
     const gc = setInterval(() => setSt((p) => (p.fx.length ? { ...p, fx: p.fx.filter((f) => Date.now() - f.at < 4000) } : p)), 1000);
-    return () => { alive = false; es.close(); clearTimeout(timer); clearInterval(gc); if (poll) clearInterval(poll); };
+    return () => { alive = false; es?.close(); clearTimeout(timer); clearInterval(gc); if (poll) clearInterval(poll); };
   }, [run, pollMs]);
   return st;
 }

@@ -18,7 +18,8 @@ export interface TeamAgentView { id: string; title: string; state: AgentState; a
   branch: string; lands: string[]; resumed: number; lastReply?: string }
 export interface TeamView { id: string; plan: string; goal: string; repo: string; leadSid: string | null; person: string;
   landed: string; state: 'running' | 'done' | 'stopped'; agents: TeamAgentView[]; startedAt: number;
-  /** The plan's test run on the landed branch once the team is done: the verdict, same for blind and Loom teams. */ result?: { pass: boolean; out: string } | null; blind?: boolean }
+  /** The plan's test run on the landed branch once the team is done: the verdict, same for blind and Loom teams. */ result?: { pass: boolean; out: string } | null; blind?: boolean;
+  /** What Loom did during this run, as it happens: the graph only gets these once the run is imported. */ events?: { id: string; kind: string; region: string[]; parties: unknown[]; outcome: string; at: number; detail: string }[] }
 export interface TeamDeps { routes: LiveRoutes; bin?: string; url?: string; hookCmd?: string; mcpPath?: string; pollMs?: number;
   onAgentEvent?(team: string, agent: string, text: string): void;
   onCollision?(team: string, c: CollisionIn): void;
@@ -101,7 +102,7 @@ export class Team {
 
   view(): TeamView {
     return { id: this.id, plan: this.slug, goal: this.plan.goal, repo: this.o.repo, leadSid: this.o.leadSid ?? null, person: this.o.person,
-      landed: this.landed, state: this.st, startedAt: this.startedAt, result: this.result, blind: this.o.blind === true,
+      landed: this.landed, state: this.st, startedAt: this.startedAt, result: this.result, blind: this.o.blind === true, events: this.events.slice(-60).reverse(),
       agents: [...this.agents.values()].map((a) => ({ id: a.t.id, title: a.t.title, state: a.state, after: a.t.after, sid: a.sid, worktree: a.wt,
         branch: a.branch, lands: a.lands, resumed: a.resumed, lastReply: a.lastReply })) };
   }
@@ -131,13 +132,15 @@ export class Team {
     this.team('agent_started', a.t.id);
   }
 
+  private events: NonNullable<TeamView['events']> = [];
   private suffix() { return this.o.blind ? SUFFIX_BLIND : SUFFIX_TEAM; }
 
   /** The Live layer names agents; the team knows their people and sessions. */
   private collide(c: CollisionIn) {
     const parties = c.parties.map((p) => { const a = this.agents.get(p.agent ?? ''); return a ? { person: this.o.person, session: a.sid, agent: a.t.id } : p; });
     const full = { ...c, parties };
-    writeCollision(this.o.repo, this.id, full);
+    const id = writeCollision(this.o.repo, this.id, full);
+    this.events.push({ id, kind: full.kind, region: full.region, parties: full.parties, outcome: full.outcome, at: Date.now(), detail: full.detail ?? '' });
     this.d.onCollision?.(this.id, full);
   }
 

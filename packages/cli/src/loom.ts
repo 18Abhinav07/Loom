@@ -136,7 +136,7 @@ export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: stri
     const text = `files: ${s.files} · regions: ${s.regions} · degraded: ${s.degraded.length} · unresolved calls: ${s.unresolved} · sessions: ${sessions} · people: ${people} · reparsed: ${s.reparsed}`;
     const byPath = await g.query<{ p: string; n: number }>('MATCH (r:Region) WHERE coalesce(r.tombstoned, false) = false RETURN r.path AS p, count(r) AS n');
     const regions: Record<string, number> = {};
-    for (const { p, n } of byPath) for (const l of Object.keys(detectLangs([p]))) regions[l] = (regions[l] ?? 0) + n;
+    for (const { p, n } of byPath) if (p) for (const l of Object.keys(detectLangs([p]))) regions[l] = (regions[l] ?? 0) + n;
     const [{ last }] = await g.query<{ last: number | null }>('MATCH (s:Session) RETURN max(s.started) AS last');
     const summary: InitSummary = { files: s.files, regions, degraded: s.degraded.length, sessions, people, last: last ?? null,
       compile: (cfg as LoomConfig).compile ?? null, test: cfg.testCmd ?? null };
@@ -213,7 +213,7 @@ export async function main(argv: string[]): Promise<number> {
     try {
       r = await initRepo(process.cwd(), { hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`, commit,
         mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs'), loomCmd: `node ${join(loomRoot(), 'packages', 'cli', 'dist', 'loom.cjs')}` });
-    } catch (e) { console.error(`loom init: ${(e as Error).message}`); return 1; }
+    } catch (e) { console.error(`loom init: ${(e as Error).message}`); if (process.env.LOOM_DEBUG) console.error((e as Error).stack); return 1; }
     console.log(printSummary(r));
     if (r.withheld.length) console.log(`not in the first commit (secrets stay untracked): ${r.withheld.join(', ')}`);
     if (r.pending) console.log('next: commit .loom/ (it carries the regions lock and session records to teammates)');

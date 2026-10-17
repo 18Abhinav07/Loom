@@ -166,8 +166,9 @@ export class LiveRoutes {
     const now = Date.now();
     const leases = await r.g.query<{ agent: string; symbol: string; mode: string; expires: number }>(
       `MATCH (a:Agent)-[l:LEASED]->(x:Region) WHERE l.expires > $now RETURN a.id AS agent, x.id AS symbol, l.mode AS mode, l.expires AS expires`, { now });
-    const waits = await r.g.query<{ agent: string }>('MATCH (a:Agent)-[:WAITS_ON]->(:Region) RETURN DISTINCT a.id AS agent');
-    const ids = [...new Set(leases.map((l) => l.symbol))];
+    const waits = await r.g.query<{ agent: string; symbol: string }>('MATCH (a:Agent)-[:WAITS_ON]->(x:Region) RETURN DISTINCT a.id AS agent, x.id AS symbol');
+    const changed = (await r.g.query<{ region: string }>('MATCH (c:Change) RETURN DISTINCT c.region AS region')).map((c) => c.region);
+    const ids = [...new Set([...leases.map((l) => l.symbol), ...waits.map((w) => w.symbol), ...changed])];
     const nodes = ids.length ? await r.g.query<{ id: string; qname: string; file: string; kind: string }>(
       `MATCH (s:Region) WHERE s.id IN $ids OPTIONAL MATCH (s)-[:CALLS]-(n:Region)
        WITH collect(DISTINCT s) + collect(DISTINCT n) AS ss UNWIND ss AS x WITH DISTINCT x LIMIT 300
@@ -180,6 +181,7 @@ export class LiveRoutes {
       nodes, edges,
       agents: [...r.agents].map(([id, a]) => ({ id, state: waiting.has(id) ? 'waiting' : 'active', heartbeatAt: now, task: a.task, taskTitle: a.title })),
       leases: leases.map((l) => ({ ...l, contract: l.mode === 'contract' })),
+      waits: waits.map((w) => ({ agent: w.agent, symbol: w.symbol })), changed,
       notices: await this.notices(run) ?? [],
     };
   }

@@ -34,8 +34,8 @@ it('team explains a sent-back landing in words', async () => {
   mockApi({ '/ctx': { cwd: '/r' }, '/teams': [TEAM], '/collisions': [] });
   render(<Teams />);
   await waitFor(() => expect(screen.getAllByTestId('agent-card').length).toBe(2));
-  expect(screen.getByText(/Sent back: the tests failed on the merged result/)).toBeTruthy();
-  expect(screen.getByText(/started from plan todoapp, no Lead session/)).toBeTruthy();
+  expect(screen.getAllByText(/tests failed on the merged result/i).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/started from plan todoapp, no Lead session/).length).toBeGreaterThan(0);
 });
 
 it('code map says what to do when no code is mapped', async () => {

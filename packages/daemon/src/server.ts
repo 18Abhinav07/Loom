@@ -372,6 +372,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
           return send(r.ok ? 200 : 400, r);
         }
         const id = parts[1];
+        if (req.method === 'GET' && parts.length === 3 && parts[2] === 'history') { const r = teams.agentHistory(id, u.searchParams.get('agent') ?? ''); return send(r.ok ? 200 : 404, r); }
         if (req.method === 'GET' && parts.length === 2) { const v = teams.get(id); return v ? send(200, v) : send(404, { error: `no team ${id}` }); }
         if (req.method === 'POST' && parts.length === 3) {
           const r = parts[2] === 'stop' ? await teams.stop(id) : parts[2] === 'merge' ? await teams.merge(id, b.into)
@@ -493,6 +494,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       }
       send(404, { error: 'not found' });
     } catch (e) {
+      console.error(`[loom] ${req.method} ${req.url}: ${(e as Error).stack ?? e}`);
       send(500, { error: String(e) });
     }
   });
@@ -555,7 +557,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     if (f && !existsSync(f)) return { ok: false, problems: [`no plan file at ${f}`], warnings: [] };
     const { plan, problems } = parseTeamPlan(f ? readFileSync(f, 'utf8') : String(b.text ?? ''));
     if (!plan) return { ok: false, problems, warnings: [] };
-    const regionPaths = (await repo.graph.query<{ path: string }>('MATCH (r:Region) RETURN r.path AS path').catch(() => [])).map((r) => r.path);
+    const regionPaths = (await repo.graph.query<{ path: string }>('MATCH (r:Region) WHERE r.path IS NOT NULL RETURN r.path AS path').catch(() => [])).map((r) => r.path);
     const files = (ref: string) => { const out = gitTry(repo.top, 'ls-tree', '-r', '--name-only', ref); if (out === null) throw new Error(`unknown ref ${ref}`); return out.split('\n').filter(Boolean); };
     return { ...checkTeamPlan(plan, { files, regions: regionPaths.length, regionPaths }), plan };
   }
