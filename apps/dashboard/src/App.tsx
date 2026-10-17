@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Bench } from './Bench';
 import { Home } from './Home';
+import { Lead } from './Lead';
+import { Plans } from './Plans';
+import { Teams } from './Teams';
 
 export const VIEWS = ['home', 'lead', 'plans', 'teams', 'sessions', 'people', 'collisions', 'functions', 'growth', 'bench'] as const;
 export type View = typeof VIEWS[number];
@@ -24,7 +27,8 @@ export function App() {
         {VIEWS.map((v) => <button key={v} className={view === v ? 'on' : ''} onClick={() => setView(v)}>{title(v)}</button>)}
       </nav>
       <main>
-        {view === 'home' ? <Home go={go} /> : view === 'bench' ? <Bench /> : <Soon v={view} />}
+        {view === 'home' ? <Home go={go} /> : view === 'bench' ? <Bench /> : view === 'lead' ? <Lead /> : view === 'plans' ? <Plans go={go} />
+          : view === 'teams' ? <Teams /> : <Soon v={view} />}
       </main>
     </div>
   );

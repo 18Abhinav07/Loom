@@ -24,5 +24,7 @@ export interface Compare {
   e5: { scenario: string; blind: Cell; loom: Cell }[];
 }
 export interface Cell { all_pass: number; n: number; broken: number; conflicts: number }
-export interface TeamAgent { id: string; state: string; task?: string; title?: string; after?: string[]; lastReply?: string; lands?: number }
-export interface Team { id: string; plan: string; state: string; agents: TeamAgent[]; started?: number }
+export interface TeamAgent { id: string; title: string; state: string; after: string[]; sid: string; branch: string; lands: string[]; resumed: number; lastReply?: string }
+export interface Team { id: string; plan: string; goal: string; state: 'running' | 'done' | 'stopped'; agents: TeamAgent[]; startedAt: number }
+export interface PlanRow { slug: string; goal: string; tasks: number }
+export interface Collision { id: string; kind: string; region: string[]; parties: { person: string; session: string }[]; outcome: string; at: number; detail: string }

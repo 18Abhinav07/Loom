@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { api, post, type Compare, type Team } from './api';
+import { api, post, type Compare, type PlanRow, type Team } from './api';
 
 type Go = (view: string) => void;
 const load = <T,>(path: string, set: (v: T) => void) => { api<T>(path).then(set).catch(() => {}); };
 
 export function Home({ go }: { go: Go }) {
   const [cmp, setCmp] = useState<Compare | null>(null);
-  const [plans, setPlans] = useState<{ slug: string; title?: string }[]>([]);
+  const [plans, setPlans] = useState<PlanRow[]>([]);
   const [plan, setPlan] = useState('');
   const [brief, setBrief] = useState('');
   const [teams, setTeams] = useState<Team[] | null>(null);
@@ -14,7 +14,7 @@ export function Home({ go }: { go: Go }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     load<Compare>('/bench/compare', setCmp);
-    load<{ slug: string; title?: string }[]>('/plans', (p) => { setPlans(p); setPlan((x) => x || p[0]?.slug || ''); });
+    load<PlanRow[]>('/plans', (p) => { setPlans(p); setPlan((x) => x || p[0]?.slug || ''); });
     load<{ text: string }>('/brief', (b) => setBrief(b.text));
     const poll = () => load<Team[]>('/teams', setTeams);
     poll(); const t = setInterval(poll, 4000); return () => clearInterval(t);
@@ -62,7 +62,7 @@ export function Home({ go }: { go: Go }) {
           <h3>Start a team</h3>
           <select value={plan} onChange={(e) => setPlan(e.target.value)} aria-label="plan">
             {!plans.length && <option value="">No plans yet</option>}
-            {plans.map((p) => <option key={p.slug} value={p.slug}>{p.title ?? p.slug}</option>)}
+            {plans.map((p) => <option key={p.slug} value={p.slug}>{p.slug}</option>)}
           </select>
           <div className="row"><button disabled={!plan} onClick={start}>Start</button></div>
           {msg && <p className="bad">{msg}</p>}

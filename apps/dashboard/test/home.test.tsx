@@ -5,7 +5,7 @@ import { Home } from '../src/Home';
 import { COMPARE, mockApi } from './mock';
 
 afterEach(cleanup);
-const routes = { '/ctx': { cwd: '/r' }, '/bench/compare': COMPARE, '/plans': [{ slug: 'p1', title: 'P1' }], '/brief': { text: 'Hello team' }, '/teams': [] };
+const routes = { '/ctx': { cwd: '/r' }, '/bench/compare': COMPARE, '/plans': [{ slug: 'p1', goal: 'G', tasks: 2 }], '/brief': { text: 'Hello team' }, '/teams': [] };
 
 describe('Home', () => {
   it('renders proof numbers from /bench/compare and no "django"', async () => {
