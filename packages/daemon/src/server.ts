@@ -67,14 +67,15 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   };
   const bus = new EventBus();
   const live = new LiveRoutes(opts.db);
-  const token = machineToken(opts.home ?? process.env.LOOM_HOME ?? join(homedir(), '.loom'));
+  const loomHome = opts.home ?? process.env.LOOM_HOME ?? join(homedir(), '.loom');
+  const token = machineToken(loomHome);
   const leadBus = new Bus();
   const mirror = new Mirror(leadBus, async (cwd, claude) => {   // a session that started before this daemon did
     const repo = await resolveRepo(opts.db, cwd, opts.home);
     const a = repo ? activeSession(repo.top, claude) : null;
     return repo && a ? { claude, sid: a.sid, writer: a.writer, person: gitTry(repo.top, 'config', 'user.email') ?? 'unknown', repo: repo.top } : null;
   });
-  const channels = new Channels(leadBus, mirror);
+  const channels = new Channels(leadBus, mirror, join(loomHome, 'held'));
   /** A channel registering after a daemon restart: find the session whose SessionStart recorded this claude pid, and bind it now. */
   const rebind = async (cwd: string, pid: number) => {
     const repo = cwd ? await resolveRepo(opts.db, cwd, opts.home) : null;

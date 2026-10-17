@@ -147,3 +147,23 @@ test('SessionStart with source compact keeps the Loom session: same sid, no seco
   const rows = await (await fetch(`${url}/sessions`, { headers: H() })).json();
   expect(rows.filter((s: any) => s.claude === 'c-compact').map((s: any) => s.sid)).toEqual([sid]);
 });
+
+// Final review I7: a message held for a busy session survives a daemon restart and is delivered at that session's next Stop.
+test('a held message survives a daemon restart and is flushed on the next Stop', async () => {
+  const { r } = repo();
+  await hook('SessionStart', r, 'c-held', {}, '890,5353,1');
+  const sid = activeSession(r, 'c-held')!.sid;
+  expect((await post('/channels', { pid: 5353, port: stubPort, secret: SECRET, cwd: r })).status).toBe(200);
+  expect(await (await post(`/sessions/${sid}/messages`, { text: 'go' })).json()).toEqual({ status: 'sent' });
+  expect(await (await post(`/sessions/${sid}/messages`, { text: 'kept across restart' })).json()).toEqual({ status: 'held' });
+  const fresh = await startServer({ port: 0, db, uiPort: null, recordDir: tmpRecord(), home });
+  try {
+    const u2 = `http://127.0.0.1:${fresh.port}`;
+    expect((await fetch(`${u2}/channels`, { method: 'POST', headers: H(), body: JSON.stringify({ pid: 5353, port: stubPort, secret: SECRET, cwd: r }) })).status).toBe(200);
+    const n = got.length;
+    await fetch(`${u2}/hook/claude/Stop`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-loom-home': home, 'x-loom-ppids': '890,5353,1' },
+      body: JSON.stringify({ hook_event_name: 'Stop', cwd: r, session_id: 'c-held', last_assistant_message: 'done' }) });
+    expect(await until(() => got.length > n)).toBe(true);
+    expect(got.slice(n).map((g) => g.content)).toEqual(['kept across restart']);
+  } finally { await fresh.close(); }
+});

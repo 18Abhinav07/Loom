@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Bus } from './bus.js';
 import type { Live, Mirror } from './mirror.js';
 
@@ -16,7 +18,25 @@ export class Channels {
   private waiting = new Map<string, number[]>();    // claude session id → ppids, until its channel registers
   private held = new Map<string, string[]>();
   private perms = new Map<string, Pending & { claude: string; answered: boolean }>();
-  constructor(private bus: Bus, private mirror: Mirror) {}
+  /** `dir` keeps each session's held queue on disk, so a daemon restart does not lose what the dashboard sent. */
+  constructor(private bus: Bus, private mirror: Mirror, private dir?: string) {}
+
+  private file(claude: string) { return this.dir ? join(this.dir, `${encodeURIComponent(claude)}.json`) : null; }
+  private heldOf(claude: string): string[] {
+    let q = this.held.get(claude);
+    if (!q) {
+      const f = this.file(claude);
+      try { q = f ? (JSON.parse(readFileSync(f, 'utf8')) as string[]) : []; } catch { q = []; }
+      this.held.set(claude, q);
+    }
+    return q;
+  }
+  private save(claude: string) {
+    const f = this.file(claude); if (!f) return;
+    const q = this.held.get(claude) ?? [];
+    try { if (q.length) { mkdirSync(this.dir!, { recursive: true }); writeFileSync(f, JSON.stringify(q)); } else rmSync(f, { force: true }); }
+    catch (e) { console.error(`[loom] held queue: ${String(e)}`); }
+  }
 
   register(r: Reg) {
     this.regs.set(r.pid, r);
@@ -36,7 +56,7 @@ export class Channels {
     if (l && !l.channel) { l.channel = true; this.mirror.state(l); }
   }
   drop(claude: string) {
-    this.bound.delete(claude); this.waiting.delete(claude); this.held.delete(claude);
+    this.bound.delete(claude); this.waiting.delete(claude); this.held.set(claude, []); this.save(claude); this.held.delete(claude);
     for (const [rid, p] of this.perms) if (p.claude === claude) this.perms.delete(rid);
   }
 
@@ -61,7 +81,7 @@ export class Channels {
   async send(l: Live, text: string): Promise<SendStatus> {
     if (!this.bound.has(l.claude)) return 'no-channel';
     if (l.busy) {
-      const q = this.held.get(l.claude) ?? []; q.push(text); this.held.set(l.claude, q);
+      const q = this.heldOf(l.claude); q.push(text); this.save(l.claude);
       this.bus.publish({ repo: l.repo, sid: l.sid, kind: 'channel', data: { held: text, queue: q.length } });
       return 'held';
     }
@@ -70,9 +90,10 @@ export class Channels {
 
   /** After a Stop: the session is idle; deliver the oldest held message. */
   async onStop(l: Live) {
-    const q = this.held.get(l.claude); const next = q?.shift();
+    const q = this.heldOf(l.claude); const next = q.shift();
     if (next === undefined) return;
-    if (!(await this.push(l, next))) q!.unshift(next);
+    if (!(await this.push(l, next))) q.unshift(next);
+    this.save(l.claude);
   }
 
   permission(pid: number, p: { request_id?: string; tool_name?: string; description?: string; input_preview?: string }): Live | undefined {
@@ -97,5 +118,5 @@ export class Channels {
   pending(l: Live): Pending[] {
     return [...this.perms.values()].filter((p) => p.claude === l.claude && !p.answered).map(({ claude: _c, answered: _a, ...p }) => p);
   }
-  queue(l: Live) { return this.held.get(l.claude)?.length ?? 0; }
+  queue(l: Live) { return this.heldOf(l.claude).length; }
 }
