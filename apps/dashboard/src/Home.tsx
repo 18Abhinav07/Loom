@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, post, repoCwd, type Compare, type PlanRow, type Team } from './api';
 import { agentColor } from './stream';
+import { DemoStage } from './Demo';
 import { Bot, NO_REPO } from './ui';
 
 type Go = (view: string, say?: string) => void;
@@ -23,7 +24,7 @@ const PIPE = [
 ];
 const USE = [['1 · Set up once', 'Maps the repo and starts Loom.', 'loom init'], ['2 · Start a team', "Describe the work; review the Lead's tasks.", 'loom new "…"'], ['3 · Watch or join in', 'Message any agent, or open its session.', 'loom lead'], ['4 · Merge the result', 'Everything that landed is on one branch.', 'git merge loom/<run>/landed']];
 
-export function Home({ go }: { go: Go }) {
+export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
   const [cmp, setCmp] = useState<Compare | null>(null);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [plan, setPlan] = useState('');
@@ -55,7 +56,8 @@ export function Home({ go }: { go: Go }) {
       <div className="hs">
         <div className="hgrid">
           <div className="hcopy">
-            {repo === 'none'
+            {demo ? <span className="h5chip reveal"><span className="ldot" /><b>Demo</b> · a recorded run of 3 Claude agents on a real open-source Python codebase</span>
+              : repo === 'none'
               ? <span className="h5chip reveal"><b>Not set up</b> · {base(cwd) || 'this folder'} · run <code>loom init</code></span>
               : <span className="h5chip reveal"><span className="ldot" /><b>{repo === 'ready' ? 'Ready' : 'Checking'}</b> · {base(cwd) || 'this repo'}</span>}
             <h1 className="reveal" style={{ '--i': 1 } as never}>Run a team of coding agents on one repo. <em>Nothing breaks.</em></h1>
@@ -68,6 +70,7 @@ export function Home({ go }: { go: Go }) {
           </div>
 
           <div className="card h5stage reveal" style={{ '--i': 2 } as never}>
+            {demo ? <DemoStage /> : (<>
             <div className="bar">
               <span><b>{live?.agents.length ?? 0}</b>agents</span><span><b>{count(['working', 'starting'])}</b>working</span>
               <span><b>{count(['waiting', 'blocked'])}</b>waiting</span><span><b>{live ? live.agents.reduce((n, a) => n + a.lands.length, 0) : 0}</b>landed</span>
@@ -93,6 +96,7 @@ export function Home({ go }: { go: Go }) {
                 </div>);
             })()}
             {live && <button className="btn ghost sm" style={{ margin: '10px 14px' }} onClick={() => go('teams')}>Open the team →</button>}
+            </>)}
           </div>
         </div>
       </div>

@@ -158,6 +158,8 @@ test('1.4 replay re-sends the recording into a fresh graph through the same hand
     expect(await (await fetch(`${rui}/bench/run`)).json()).toMatchObject({ readOnly: true });
     const demo = await (await fetch(`${rui}/demo/replay`, { method: 'POST', body: '{}' })).json();   // Story's "Watch 3 real agents"
     expect(demo.run).toMatch(/^public:replay:/);
+    const fast = await (await fetch(`${rui}/demo/replay`, { method: 'POST', body: JSON.stringify({ speed: 0, wait: true }) })).json();   // the dashboard's Demo button picks the pace
+    expect(fast).toMatchObject({ done: true, failed: [] });
     const r = await (await fetch(`${rurl}/replay`, { method: 'POST', body: JSON.stringify({ dir, speed: 0, wait: true }) })).json();
     expect(r.run).toMatch(/^public:replay:/);
     expect(r.failed).toEqual([]);

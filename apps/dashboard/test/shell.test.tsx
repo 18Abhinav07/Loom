@@ -58,3 +58,15 @@ it('Home draws each running agent as a robot on the floor with its task and the 
   expect(container.querySelectorAll('.floor .agent5').length).toBe(2);
   expect(container.querySelectorAll('.landed5 .slot')[0].textContent).toBe('✓');
 });
+
+it('the Demo button replays the recorded run on Home, and Exit demo returns to the real team', async () => {
+  mockApi({ ...base, '/teams': [], '/plans': [], '/brief': { text: '' }, '/demo/replay': { run: 'coord:replay:x' } });
+  vi.stubGlobal('EventSource', class { onopen = null; onerror = null; onmessage = null; close() {} });
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Demo' }));
+  expect(await screen.findByText(/recorded run of 3 Claude agents/)).toBeTruthy();
+  expect(screen.getByText(/demo · recorded run/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Exit demo' }));
+  await waitFor(() => expect(screen.queryByText(/demo · recorded run/)).toBeNull());
+  vi.unstubAllGlobals();
+});

@@ -33,12 +33,13 @@ export function App() {
   const [cwd, setCwd] = useState('');
   const [say, setSay] = useState('');
   const [live, setLive] = useState(false);
+  const [demo, setDemo] = useState(() => new URLSearchParams(location.search).get('demo') === '1');
   const bar = useRef<HTMLElement>(null);
   const [pill, setPill] = useState({ left: 0, width: 0 });
   useEffect(() => {
-    const q = new URLSearchParams(location.search); q.set('view', view);
+    const q = new URLSearchParams(location.search); q.set('view', view); if (demo) q.set('demo', '1'); else q.delete('demo');
     history.replaceState(null, '', `?${q}`);
-  }, [view]);
+  }, [view, demo]);
   useEffect(() => {
     repoCwd().then(setCwd);
     const poll = () => api<Team[]>('/teams').then((t) => setLive(t.some((x) => x.state === 'running'))).catch(() => setLive(false));
@@ -67,12 +68,13 @@ export function App() {
             </button>))}
         </nav>
         <div className="spacer" />
+        <button className={`btn ghost ${demo ? 'on' : ''}`} aria-pressed={demo} onClick={() => { setDemo(!demo); setView('home'); }}>{demo ? 'Exit demo' : 'Demo'}</button>
         <button className="btn or" onClick={newTeam}>+ New team</button>
       </header>
       <main>
         {tab.views.length > 1 && (
           <div className="subtabs">{tab.views.map((v) => <button key={v} className={`chip ${v === view ? 'on' : ''}`} onClick={() => setView(v)}>{SUB[v]}</button>)}</div>)}
-        {view === 'home' ? <Home go={go} /> : view === 'bench' ? <Bench /> : view === 'lead' ? <Lead say={say} /> : view === 'plans' ? <Plans go={go} />
+        {view === 'home' ? <Home go={go} demo={demo} /> : view === 'bench' ? <Bench /> : view === 'lead' ? <Lead say={say} /> : view === 'plans' ? <Plans go={go} />
           : view === 'teams' ? <Teams go={go} /> : view === 'sessions' ? <Sessions /> : view === 'people' ? <People /> : view === 'collisions' ? <Collisions />
           : view === 'functions' ? <Functions /> : <Growth />}
       </main>

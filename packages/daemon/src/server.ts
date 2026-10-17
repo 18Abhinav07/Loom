@@ -591,7 +591,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       }
       if (u.pathname === '/demo/replay' && req.method === 'POST') {   // the API port's /replay, fixed to the shipped recording
         const r = await fetch(`http://127.0.0.1:${port}/replay`, { method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ dir: opts.demoRun ?? join(DEMO, 'run-1'), rel: 'demo/run-1' }) });
+          body: JSON.stringify({ ...(await body(req)), dir: opts.demoRun ?? join(DEMO, 'run-1'), rel: 'demo/run-1' }) });
         return new Reply(r.status, await r.json());
       }
       if (u.pathname === '/ctx') return { cwd: opts.cwd ?? process.cwd() };   // the repo the dashboard opens on when the page names none
