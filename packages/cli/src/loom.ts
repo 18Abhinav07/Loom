@@ -7,7 +7,7 @@ import { LoomDb, type LoomGraph } from '@loom/core';
 import { loadPlan } from '@loom/planner';
 import { regionsCmd } from './regions.js';
 import { exitCode, runPlan } from './run.js';
-import { runPlan2 } from './run2.js';
+import { teamCmd } from './team.js';
 import { resolveAttach, resolveRepo } from '@loom/daemon';
 import { addLesson, DEFAULT_EXCLUDES, ensureLoomDir, finishSession, gitTry, graphName, importSessions, indexRepo, installGitHooks, lessonsFor,
   postCommit, preCommit, readActive, readConfig, reconcile, repoId, sync, type LoomConfig } from '@loom/memory';
@@ -17,12 +17,6 @@ import { startLead } from './lead.js';
 const DAEMON = process.env.LOOM_URL ?? 'http://127.0.0.1:4318';
 const UI = process.env.LOOM_UI ?? 'http://127.0.0.1:4317';
 const HOME = join(homedir(), '.loom');
-const SKIP = new Set(['node_modules', 'venv', '.venv']);
-// Bash is in the PreToolUse matcher: an agent named it as the way round an Edit deny (S-22). The pre-commit hook stays the hard check.
-// UserPromptSubmit and Stop stay while the v1 run mode serves them (server.ts onHook).
-const EVENTS: [string, string | undefined][] = [['SessionStart', undefined], ['UserPromptSubmit', undefined],
-  ['PreToolUse', 'Edit|Write|MultiEdit|NotebookEdit|Bash'], ['PostToolUse', '*'], ['Stop', undefined], ['SessionEnd', undefined]];
-
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 /** fetch threw: the daemon is down only when the connection was refused; a long verify can also hit the 300 s client timeout. */
 function failed(e: unknown): number {
@@ -32,42 +26,8 @@ function failed(e: unknown): number {
 }
 const loomRoot = () => resolve(__dirname, '..', '..', '..');                    // packages/cli/dist -> repo root (cjs bundle only)
 
-function hasPy(d: string): boolean {
-  for (const e of readdirSync(d, { withFileTypes: true })) {
-    if (e.name.startsWith('.') || SKIP.has(e.name)) continue;
-    if (e.isFile() && e.name.endsWith('.py')) return true;
-    if (e.isDirectory() && hasPy(join(d, e.name))) return true;
-  }
-  return false;
-}
-
-/** Top-level dirs that hold Python: the base a run indexes. */
-export function pyDirs(root: string): string[] {
-  return readdirSync(root, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !SKIP.has(e.name) && hasPy(join(root, e.name))).map((e) => e.name).sort();
-}
-
-/** Append lines to the repo's .git/info/exclude once each. */
-export function exclude(mainRoot: string, lines: string[]) {
-  const ex = join(mainRoot, '.git', 'info', 'exclude');
-  mkdirSync(dirname(ex), { recursive: true });
-  const cur = existsSync(ex) ? readFileSync(ex, 'utf8') : '';
-  for (const line of lines)
-    if (!cur.split('\n').includes(line)) appendFileSync(ex, `${cur && !cur.endsWith('\n') ? '\n' : ''}${line}\n`);
-}
-
-/** The Claude hooks, merged into a settings file next to whatever hooks it already has. */
-export function mergeHooks(sp: string, hookCmd: string) {
-  const s = existsSync(sp) ? JSON.parse(readFileSync(sp, 'utf8')) : {};
-  s.hooks ??= {};
-  for (const [ev, matcher] of EVENTS) {
-    const list: { matcher?: string; hooks: { command?: string }[] }[] = (s.hooks[ev] ??= []);
-    if (list.some((h) => h.hooks?.some((x) => x.command?.includes('loom-hook')))) continue;
-    list.push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: `${hookCmd} claude ${ev}`, timeout: 30 } as never] });
-  }
-  mkdirSync(dirname(sp), { recursive: true });
-  writeFileSync(sp, JSON.stringify(s, null, 2) + '\n');
-}
+export { exclude, mergeHooks, pyDirs } from '@loom/daemon';
+import { exclude, mergeHooks, pyDirs } from '@loom/daemon';
 
 /** The test command a run verifies with, guessed from the repo's own manifests; null when there is none. */
 export function detectTestCmd(root: string): string | null {
@@ -457,25 +417,29 @@ export async function main(argv: string[]): Promise<number> {
     for (const t of p.tasks) console.log(`\n${t.id}: ${t.scope.join(', ') || '(no symbols matched)'}`);
     return 0;
   }
+  if (cmd === 'team') return teamCmd(rest, DAEMON);
   if (cmd === 'run') {
     const file = flag(rest, '--plan');
-    if (!file) { console.error('usage: loom run --plan <file> [--model sonnet] [--claude <bin>] [--max N] [--blind | --v1] [--report out.json]'); return 1; }
-    const blind = rest.includes('--blind');   // the no-Loom baseline (bench E5)
-    if (!blind && !(await healthy())) { console.error('daemon not running (run loom up)'); return 1; }
-    const plan = loadPlan(file);
-    // R6.3: v2 (land-as-you-go through the daemon's merge queue) is the default; the blind baseline and --v1 keep the merge-at-end flow
-    const rep = await (blind || rest.includes('--v1') ? runPlan : runPlan2)({ repo: plan.repo ? resolve(dirname(file), plan.repo.replace(/^~(?=\/|$)/, homedir())) : git(process.cwd(), 'rev-parse', '--show-toplevel'), plan,
-      model: flag(rest, '--model'), claudeBin: flag(rest, '--claude'), maxParallel: flag(rest, '--max') ? Number(flag(rest, '--max')) : undefined,
-      url: DAEMON, blind, hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`,
-      mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs') });
-    table(`run ${rep.run}`, ['agent', 'exit', 'resumed', 'commit', 'session'],
-      rep.workers.map((w) => [w.agent, String(w.exit), String(w.resumed), w.commit?.slice(0, 7) ?? '-', w.sessionId ?? '-']));
-    console.log(`\nmerge ${rep.merge.branch}: ${rep.merge.conflict ? `CONFLICT ${rep.merge.conflict}` : 'clean'}`
-      + `; tests ${rep.merge.testsPassed === null ? 'not run' : rep.merge.testsPassed ? 'passed' : 'FAILED'}`);
-    if (rep.merge.testsPassed === false) console.log(rep.merge.testOutputTail);
-    const out = flag(rest, '--report');
-    if (out) { mkdirSync(dirname(resolve(out)), { recursive: true }); writeFileSync(out, JSON.stringify(rep, null, 2)); }
-    return exitCode(rep);
+    if (!file) { console.error('usage: loom run --plan <file> [--model sonnet] [--blind] [--report out.json]   (--v1: the old merge-at-end flow with a v1 plan file)'); return 1; }
+    if (rest.includes('--v1')) {   // the merge-at-end flow: a v1 plan file, no daemon
+      const plan = loadPlan(file);
+      const rep = await runPlan({ repo: plan.repo ? resolve(dirname(file), plan.repo.replace(/^~(?=\/|$)/, homedir())) : git(process.cwd(), 'rev-parse', '--show-toplevel'), plan,
+        model: flag(rest, '--model'), claudeBin: flag(rest, '--claude'), maxParallel: flag(rest, '--max') ? Number(flag(rest, '--max')) : undefined,
+        url: DAEMON, blind: rest.includes('--blind'), hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`,
+        mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs') });
+      table(`run ${rep.run}`, ['agent', 'exit', 'resumed', 'commit', 'session'],
+        rep.workers.map((w) => [w.agent, String(w.exit), String(w.resumed), w.commit?.slice(0, 7) ?? '-', w.sessionId ?? '-']));
+      console.log(`\nmerge ${rep.merge.branch}: ${rep.merge.conflict ? `CONFLICT ${rep.merge.conflict}` : 'clean'}`
+        + `; tests ${rep.merge.testsPassed === null ? 'not run' : rep.merge.testsPassed ? 'passed' : 'FAILED'}`);
+      if (rep.merge.testsPassed === false) console.log(rep.merge.testOutputTail);
+      const out = flag(rest, '--report');
+      if (out) { mkdirSync(dirname(resolve(out)), { recursive: true }); writeFileSync(out, JSON.stringify(rep, null, 2)); }
+      return exitCode(rep);
+    }
+    if (!(await healthy())) { console.error('daemon not running (run loom up)'); return 1; }
+    // the daemon owns the team: `loom run` is `loom team start --wait` on the plan file, in this repo
+    const pass = ['--model', '--report'].flatMap((f) => (flag(rest, f) ? [f, flag(rest, f)!] : []));
+    return teamCmd(['start', file, '--wait', ...(rest.includes('--blind') ? ['--blind'] : []), ...pass], DAEMON);
   }
   if (cmd === 'ui') {
     const run = flag(rest, '--run') ?? resolveAttach(process.cwd())?.run;
@@ -484,7 +448,7 @@ export async function main(argv: string[]): Promise<number> {
     if (!rest.includes('--no-open')) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
     return 0;
   }
-  console.log('usage: loom init | up | down | status [--release <agent>] | why <target> [--run R] | verify [task] [--run R] | lesson add|list|rm | merge-check <a> <b> [--run R] | plan (--plan F | "goal") | run --plan F | ui [--run R]');
+  console.log('usage: loom init | up | down | status [--release <agent>] | why <target> [--run R] | verify [task] [--run R] | lesson add|list|rm | merge-check <a> <b> [--run R] | plan (--plan F | "goal") | team start|status|stop|merge|msg | run --plan F | ui [--run R]');
   return cmd ? 1 : 0;
 }
 

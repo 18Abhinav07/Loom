@@ -10,6 +10,7 @@ import { resolveRepo } from '../repo.js';
 import { Live } from './live.js';
 import { landOne, MergeQueue, type LandResult } from './queue.js';
 import { upstreamOf } from './stale.js';
+import type { CollisionIn } from '../team/collide.js';
 
 export interface V2Run { id: string; g: LoomGraph; live: Live; repo: string; landed: string; test: string | null; compile: string | null; queue: MergeQueue;
   agents: Map<string, { worktree: string; task: string; title: string }> }
@@ -21,6 +22,7 @@ export class LiveRoutes {
   private readonly lives = new Map<string, Live>();
   readonly runs = new Map<string, V2Run>();
   private readonly timer: NodeJS.Timeout;
+  onCollision?: (run: string, c: CollisionIn) => void;
 
   constructor(private readonly db: LoomDb) {
     this.timer = setInterval(() => { for (const l of this.lives.values()) void l.sweep().catch(() => {}); }, SWEEP_MS);
@@ -111,7 +113,9 @@ export class LiveRoutes {
     if (!dirs.includes('.') && existsSync(join(b.repo, 'tests')) && !dirs.includes('tests')) dirs.push('tests');
     const t0 = Date.now();
     const stats = await indexRepo(g, b.repo, { baseline: true, writeLock: false, cfg: { repoId: b.run, dirs, excludes: DEFAULT_EXCLUDES, testCmd: b.test ?? null, share: false } });
-    this.runs.set(b.run, { id: b.run, g, live: this.liveOf(g), repo: b.repo, landed: b.landed, test: b.test ?? null, compile: b.compile ?? null, queue: new MergeQueue(), agents: new Map() });
+    const live = this.liveOf(g);
+    live.onCollision = (c) => this.onCollision?.(b.run, c);
+    this.runs.set(b.run, { id: b.run, g, live, repo: b.repo, landed: b.landed, test: b.test ?? null, compile: b.compile ?? null, queue: new MergeQueue(), agents: new Map() });
     return { ok: true, ms: Date.now() - t0, stats };
   }
 
@@ -138,6 +142,11 @@ export class LiveRoutes {
       if (res.status === 'landed') {
         await r.live.land(agent, res.regions, { sha: res.sha!, task: a.task });
         await r.g.query('MATCH (t:Task {id: $task}) SET t.doneAt = $now', { task: a.task, now: Date.now() });
+      }
+      if (res.status === 'contract_break' || res.status === 'tests_failed' || res.status === 'compile_failed' || res.status === 'conflict') {
+        const me = { person: '', session: agent, agent };
+        this.onCollision?.(run, { kind: res.status === 'conflict' ? 'merge_conflict' : 'landing_rejected', region: res.regions ?? [], parties: [me],
+          outcome: 'rejected', version: res.status === 'conflict' ? null : r.landed + ':' + (a.task ?? agent), detail: `${agent}: ${res.status}${res.tail ? ' — ' + String(res.tail).split('\n')[0].slice(0, 160) : ''}` });
       }
       return res;
     });

@@ -72,20 +72,21 @@ export class Channels {
       return false;
     }
   }
-  private async push(l: Live, text: string) {
-    const ok = await this.post(l.claude, '/push', { content: text, meta: { from: 'dashboard' } });
+  private async push(l: Live, text: string, meta: Record<string, string> = {}) {
+    const ok = await this.post(l.claude, '/push', { content: text, meta: { from: 'dashboard', ...meta } });
     if (ok) { l.busy = true; this.bus.publish({ repo: l.repo, sid: l.sid, kind: 'channel', data: { sent: text } }); }   // busy until its Stop: a second message holds
     return ok;
   }
 
-  async send(l: Live, text: string): Promise<SendStatus> {
+  /** `meta.from` names the sender (default 'dashboard'). A held message keeps its sender as a prefix, since the queue stores text only. */
+  async send(l: Live, text: string, meta?: Record<string, string>): Promise<SendStatus> {
     if (!this.bound.has(l.claude)) return 'no-channel';
     if (l.busy) {
-      const q = this.heldOf(l.claude); q.push(text); this.save(l.claude);
+      const q = this.heldOf(l.claude); q.push(meta?.from ? `[${meta.from}] ${text}` : text); this.save(l.claude);
       this.bus.publish({ repo: l.repo, sid: l.sid, kind: 'channel', data: { held: text, queue: q.length } });
       return 'held';
     }
-    return (await this.push(l, text)) ? 'sent' : 'no-channel';
+    return (await this.push(l, text, meta)) ? 'sent' : 'no-channel';
   }
 
   /** After a Stop: the session is idle; deliver the oldest held message. */

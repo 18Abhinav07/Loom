@@ -20,39 +20,15 @@ export interface RunReport {
   merge: { branch: string; conflict: string | null; testsPassed: boolean | null; testOutputTail: string };
 }
 
-export const SUFFIX = "\n\nYou are one of several agents working in parallel on this repo, coordinated by Loom. [loom] notices about other "
-  + "agents' changes arrive on their own in your context and clear once your code fits them; you need no tool call to fetch or "
-  + 'acknowledge them. If Loom denies an edit, follow its message. Do not commit; Loom commits your work when you finish.';
-// Blind agents still know they are not alone; they just have no channel to the others.
-export const SUFFIX_BLIND = "\n\nYou are one of several agents working in parallel on this repo; other agents may be changing shared code at the "
-  + 'same time, and all changes will be merged together when everyone finishes. Do not commit; your work is committed when you finish.';
-const TOOLS = ['Edit', 'Write', 'MultiEdit', 'Read', 'Grep', 'Glob', 'Bash(git:*)', 'Bash(python:*)', 'Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'mcp__loom__*'];
-/** The command word of a shell line: the first token that is not a VAR=value assignment. */
-const word = (cmd: string) => cmd.trim().split(/\s+/).find((t) => !/^\w+=/.test(t));
-/** What a worker may run: the base tools plus the plan's test and compile commands. Blind workers get no Loom tools. */
-export function allowedTools(o: { test?: string | null; compile?: string | null; blind?: boolean }): string[] {
-  const extra = [o.test, o.compile].map((c) => (c ? word(c) : undefined)).filter((w): w is string => !!w).map((w) => `Bash(${w}:*)`);
-  return [...new Set([...TOOLS, ...extra])].filter((t) => !(o.blind && t.startsWith('mcp__')));
-}
+export { SUFFIX, SUFFIX_BLIND, allowedTools, MAX_RESUMES, usageLimited } from '@loom/daemon';
+import { allowedTools, SUFFIX, SUFFIX_BLIND, MAX_RESUMES, usageLimited } from '@loom/daemon';
 const KEEP_OUT = ['.', ':!.claude', ':!.loom-mcp.json'];
-/** A worker waiting along a chain of holders (A, then B, then C) is resumed once per landing. */
-export const MAX_RESUMES = 3;
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
 /** 0 only when every worker exited 0, the merge was clean, and the tests (if any) passed. */
 export function exitCode(r: RunReport): number {
   return r.workers.every((w) => w.exit === 0) && !r.merge.conflict && r.merge.testsPassed !== false ? 0 : 1;
-}
-
-const LIMIT = /usage limit|hit your limit|limit reached/i;
-/** True for a stream-json error line saying the usage limit was hit. A normal answer that mentions limits does not count. */
-export function usageLimited(line: string): boolean {
-  let j: any;
-  try { j = JSON.parse(line); } catch { return false; }
-  if (j?.type === 'result' && j.is_error === true) return LIMIT.test(String(j.result ?? ''));
-  if (j?.type === 'assistant' && j.error) return LIMIT.test(JSON.stringify(j.message?.content ?? ''));
-  return false;
 }
 
 export interface SpawnOpts { id: string; wt: string; prompt: string; resume?: string; rep: WorkerReport; runDir: string;

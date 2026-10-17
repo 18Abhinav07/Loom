@@ -24,6 +24,8 @@ import { resolveRepo } from './repo.js';
 import { LiveRoutes } from './live/routes.js';
 import { activeSession, finishSession, gitTry, lessonsFor, sessionBriefing, startSession } from '@loom/memory';
 import { Bus } from './bus.js';
+import { TeamRoutes, TEAM_TOOLS } from './team/routes.js';
+import { TeamRoutes, TEAM_TOOLS } from './team/routes.js';
 import { Mirror } from './mirror.js';
 import { Channels } from './channels.js';
 import { authorized, machineToken } from './token.js';
@@ -53,7 +55,9 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   /** Story's launcher and showcase: the bench dir it runs E1 in, how it spawns, the recording "Watch 3 real agents" replays. */
   benchRoot?: string; benchRunner?: BenchRunner; demoRun?: string;
   /** The Loom home holding `token` (B3); tests pass a tmp dir. Default LOOM_HOME, else ~/.loom. */
-  home?: string }) {
+  home?: string;
+  /** Teams' agent binary and poll interval (tests pass the fake claude). */
+  teamBin?: string; teamPoll?: number }) {
   /** C1 fixed: a run's lessons live in that run's own graph; no graph is shared between runs or tenants. P3 moves runs into the repo graph. */
   const lessonsOf = (run: string) => new Lessons(opts.db.graph(run));
   const runs = new Map<string, Coordinator>();
@@ -67,6 +71,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   };
   const bus = new EventBus();
   const live = new LiveRoutes(opts.db);
+  let teams!: TeamRoutes;   // built once the port is known
   const loomHome = opts.home ?? process.env.LOOM_HOME ?? join(homedir(), '.loom');
   const token = machineToken(loomHome);
   const leadBus = new Bus();
@@ -308,6 +313,10 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         // tool errors travel as {ok:false} with 200, so the MCP session survives daemon-side failures
         try {
           const b = await body(req);
+          if ((TEAM_TOOLS as readonly string[]).includes(parts[1])) {   // the lead's tools: an agent may not start or stop teams
+            if (req.headers['x-loom-agent'] || b.agent) return send(200, { ok: false, error: `${parts[1]} is for the lead session, not a team agent` });
+            return send(200, { ok: true, result: await teams.mcp(parts[1] as (typeof TEAM_TOOLS)[number], String(b.cwd ?? ''), b.args ?? {}) });
+          }
           const t = await live.target({ ...req.headers, ...(b.run ? { 'x-loom-run': b.run } : {}), ...(b.agent ? { 'x-loom-agent': b.agent } : {}) }, b.cwd, undefined);
           if (t) {
             const m = await live.mcp(parts[1], t, b.args ?? {});
@@ -348,6 +357,26 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         const comp = new Map(p.components.flatMap((ts, i) => ts.map((t) => [t, i] as const)));
         r.c.plan = { tasks: tasks.map((t) => ({ ...t, scope: scopes.get(t.id)!, component: comp.get(t.id) ?? -1 })), hubs: p.hubs, hubOwner: p.hubOwner };
         return send(200, r.c.plan);
+      }
+      if (parts[0] === 'teams') {   // B4: running teams. The repo comes from the caller's cwd, like /plans.
+        const b = req.method === 'POST' ? await body(req) : {};
+        const cwd = String(b.cwd ?? u.searchParams.get('cwd') ?? req.headers['x-loom-cwd'] ?? '');
+        const repo = await resolveRepo(opts.db, cwd, req.headers['x-loom-home'] as string | undefined);
+        if (!repo) return send(404, { error: 'not a Loom repo (run loom init)' });
+        if (req.method === 'GET' && parts.length === 1) return send(200, teams.list(repo.top));
+        if (req.method === 'POST' && parts.length === 1) {
+          const r = await teams.start({ cwd, plan: String(b.plan ?? ''), leadSid: b.leadSid, model: b.model, blind: b.blind === true });
+          return send(r.ok ? 200 : 400, r);
+        }
+        const id = parts[1];
+        if (req.method === 'GET' && parts.length === 2) { const v = teams.get(id); return v ? send(200, v) : send(404, { error: `no team ${id}` }); }
+        if (req.method === 'POST' && parts.length === 3) {
+          const r = parts[2] === 'stop' ? await teams.stop(id) : parts[2] === 'merge' ? await teams.merge(id, b.into)
+            : parts[2] === 'message' ? teams.message(id, String(b.agent ?? ''), String(b.text ?? ''))
+            : parts[2] === 'stop-agent' ? teams.stopAgent(id, String(b.agent ?? ''))
+            : parts[2] === 'restart-agent' ? await teams.restartAgent(id, String(b.agent ?? ''), b.note) : null;
+          if (r) return send((r as { ok?: boolean }).ok === false ? 400 : 200, r);
+        }
       }
       if (parts[0] === 'plans') {   // §3.3: team plans in .loom/plans/ and the checker; the repo comes from the caller's cwd
         const b = req.method === 'POST' ? await body(req) : {};
@@ -505,6 +534,13 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
 
   await new Promise<void>((r) => server.listen(opts.port, opts.host ?? '127.0.0.1', r));
   const port = (server.address() as { port: number }).port;
+  teams = new TeamRoutes({ routes: live, channels, mirror, bus: leadBus, url: `http://127.0.0.1:${port}`, bin: opts.teamBin, pollMs: opts.teamPoll,
+    async check(cwd, b) {
+      const repo = await resolveRepo(opts.db, cwd, opts.home);
+      if (!repo) return { ok: false, problems: [], top: null };
+      const r = await checkPlanAt(repo, { ...b, cwd });
+      return { ok: r.ok, problems: r.problems, top: repo.top };
+    } });
   const ui = opts.uiPort === null ? null
     : await startUi({ port: opts.uiPort ?? 4317, host: opts.host, bus, runs, distDir: opts.distDir ?? DIST, serves, raw: async (u, req, res) => {
       if (u.pathname !== '/lead' && !u.pathname.startsWith('/lead/api/')) return false;
@@ -548,7 +584,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   return {
     port, uiPort: ui?.port, bus, runs,
     close: async () => {
-      timers.forEach(clearInterval); live.close();
+      timers.forEach(clearInterval); await teams.closeAll(); live.close();
       for (const t of traces.values()) await t.close();
       await ui?.close(); await new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }); },
   };

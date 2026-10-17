@@ -73,10 +73,10 @@ def test_archive_keeps_transcripts_and_branch_diffs_then_drops_the_clone(tmp_pat
     g("init", "-q"); g("add", "-A"); g("commit", "-qm", "base")
     base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
     g("checkout", "-qb", "loom/abcd1234/landed"); (repo / "m.py").write_text("x = 2\n"); g("commit", "-qam", "a")
-    tdir = repo / ".loom" / "runs" / "run_1"
+    tdir = repo / ".git" / "loom" / "runs" / "abcd1234"
     tdir.mkdir(parents=True)
     (tdir / "a.jsonl").write_text('{"type":"result"}\n')
-    archive(repo, "run:1", base, tmp_path / "out", "t1__loom")
+    archive(repo, "01XXXXXXXXXXXXXXXXABCD1234", base, tmp_path / "out", "t1__loom")
     assert (tmp_path / "out" / "transcripts" / "t1__loom" / "a.jsonl").read_text() == '{"type":"result"}\n'
     assert "+x = 2" in (tmp_path / "out" / "diffs" / "t1__loom" / "loom_abcd1234_landed.diff").read_text()
     assert not repo.exists()
@@ -95,3 +95,38 @@ def test_transcript_stats_counts_loom_denials_and_handovers_in_real_transcript_l
     f.write_text("\n".join(json.dumps(x) for x in (deny, deny, hand, plain)) + "\n")
     s = _transcript_stats(f)
     assert s["denied"] == 2 and s["handovers"] == 1
+
+
+def test_plan_files_carry_the_scenarios_tasks_as_team_plan_front_matter():
+    import json, re
+    from e5.plans import PLAN_IDS, plan_md
+    from e5.scenarios import SCENARIOS
+    for sid in PLAN_IDS:
+        sc = next(s for s in SCENARIOS if s.id == sid)
+        text = plan_md(sc)
+        fm = json.loads(re.match(r"---\n(.*?)\n---\n", text, re.S).group(1))   # JSON is YAML: parseTeamPlan reads it as front matter
+        assert [t["id"] for t in fm["tasks"]] == [a.id for a in sc.agents]
+        assert fm["test"].endswith("--parallel 1") and sc.tests[0] in fm["test"]
+        for t, a in zip(fm["tasks"], sc.agents):
+            assert t["prompt"] and t["owns"] and t["done"] and t["after"] == []   # every agent starts at once, as in the old plan
+            assert t["owns"][: len(a.scope)] == list(a.scope)
+        owns = [o for t in fm["tasks"] for o in t["owns"]]
+        assert len(owns) == len(set(owns))   # the checker refuses two unordered tasks owning the same thing
+
+
+def test_team_report_is_adapted_to_the_graded_shape(tmp_path):
+    import subprocess
+    from e5.run import from_team
+    g = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=tmp_path, check=True, capture_output=True, text=True).stdout.strip()
+    g("init", "-q", "-b", "main"); (tmp_path / "f").write_text("1"); g("add", "."); g("commit", "-qm", "base")
+    g("checkout", "-qb", "loom/abcd1234/landed"); (tmp_path / "f").write_text("2"); g("commit", "-qam", "a")
+    g("branch", "loom/abcd1234/a"); g("checkout", "-q", "main")
+    team = {"id": "01XXXXXXXXXXXXXXXXABCD1234", "state": "done", "landed": "loom/abcd1234/landed", "agents": [
+        {"id": "a", "state": "landed", "branch": "loom/abcd1234/a", "lands": ["x"], "resumed": 1},
+        {"id": "b", "state": "failed", "branch": "loom/abcd1234/b", "lands": [], "resumed": 0}]}
+    rep = from_team(tmp_path, team, "test \"$(cat f)\" = 2")
+    w = {x["agent"]: x for x in rep["workers"]}
+    assert rep["run"] == team["id"] and rep["merge"]["conflict"] is False and rep["merge"]["testsPassed"] is True
+    assert (w["a"]["exit"], w["a"]["resumed"], w["a"]["lands"]) == (0, 1, ["x"]) and w["a"]["commit"]
+    assert w["b"]["exit"] == 1 and not w["b"]["commit"]
+    assert (tmp_path / ".loom" / "wt" / "abcd1234" / "_merge" / "f").read_text() == "2"
