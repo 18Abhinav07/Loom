@@ -7,6 +7,7 @@ import { news, renderBriefing } from './news.js';
 import { reconcile } from './reconcile.js';
 import { refreshHead } from './commit.js';
 import { ulid } from './ids.js';
+import { detectDivergence } from './diverge.js';
 
 export function upstreamRef(root: string): string | null {
   const u = gitTry(root, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}');
@@ -33,6 +34,7 @@ export async function sync(g: LoomGraph, root: string, o: { me: string; fetch?: 
   if (up) reconciled += (await reconcile(g, root, head, up)).versions;
   // ruling 14: only regions with activity can have moved; walking every region costs one query per region
   await refreshHead(g, root, (await g.query<{ id: string }>('MATCH (v:Version)-[:OF]->(r:Region) WHERE NOT coalesce(v.baseline, false) RETURN DISTINCT r.id AS id')).map((x) => x.id));
+  if (up) await detectDivergence(g, root, o.me, up);
   const items = await news(g, root, o.me, wm?.at ?? 0, up);
   const fresh = !wm;
   const shown = fresh ? latestHandoffPerPerson(items) : items.filter((i) => i.score > 0 || i.kind === 'handoff' || i.upstreamOnly);

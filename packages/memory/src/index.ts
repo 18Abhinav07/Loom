@@ -15,3 +15,5 @@ export * from './sync.js';
 export * from './lessons.js';
 export * from './redact.js';
 export * from './plandocs.js';
+export * from './collide.js';
+export * from './diverge.js';
