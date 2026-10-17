@@ -258,7 +258,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
               if (parts[2] === 'SessionStart') {
                 const person = gitTry(repo.top, 'config', 'user.email') ?? 'unknown';
                 const writer = req.headers['x-loom-lead'] === '1' ? 'lead' : 'main';
-                const { sid, briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive', claudeSid: input.session_id ?? null, writer, surface: 'terminal' });
+                const { sid, briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive', claudeSid: input.session_id ?? null, pids: ppidsOf(req.headers), writer, surface: 'terminal' });
                 if (input.session_id) { mirror.start({ claude: input.session_id, sid, writer, person, repo: repo.top }); channels.bind(input.session_id, ppidsOf(req.headers)); }
                 return send(200, { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: briefing } });
               }
