@@ -119,6 +119,9 @@ export function printSummary(r: { state: 'A' | 'B' | 'C'; committed: boolean; pe
     `test ${s.test ?? 'none found'} · compile ${s.compile ?? 'none'}`, r.committed ? 'committed .loom/' : r.pending ? '.loom/ not committed' : '.loom/ up to date in git'].join('\n');
 }
 
+/** Files the state-A first commit never takes: env files (not their .example/.sample/.template), keys, OS litter. */
+const SECRET_FILE = /(^|\/)(\.env(?!\.(example|sample|template)$)(\..+)?|[^/]+\.(pem|key|p12|pfx)|id_(rsa|ed25519|ecdsa)|\.DS_Store)$/;
+
 export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: string; loomCmd: string; tenant?: string; testCmd?: string; db?: LoomDb;
   /** Commit .loom/ when init is done. Undefined means no. */ commit?: boolean }) {
   const top = git(cwd, 'rev-parse', '--show-toplevel');
@@ -128,10 +131,13 @@ export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: stri
   const mainRoot = dirname(common);
   const hasHead = spawnSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: mainRoot }).status === 0;
   const state: 'A' | 'B' | 'C' = !hasHead ? 'A' : existsSync(join(mainRoot, '.loom', 'config.json')) ? 'C' : 'B';
-  if (state === 'A') {   // no commits yet: the repo id is its first commit, so make one from what is here
+  let withheld: string[] = [];
+  if (state === 'A') {   // no commits yet: the repo id is its first commit, so make one from what is here, never with secrets in it
     const gi = join(mainRoot, '.gitignore');
-    if (!existsSync(gi)) writeFileSync(gi, 'node_modules/\n.venv/\n__pycache__/\n');
+    if (!existsSync(gi)) writeFileSync(gi, 'node_modules/\n.venv/\n__pycache__/\n.env\n.env.*\n!.env.example\n*.pem\n*.key\n.DS_Store\n');
     git(mainRoot, 'add', '-A');
+    withheld = git(mainRoot, 'diff', '--cached', '--name-only').split('\n').filter((f) => SECRET_FILE.test(f));
+    if (withheld.length) git(mainRoot, 'rm', '-q', '--cached', '--', ...withheld);
     execFileSync('git', [...IDENT(mainRoot), 'commit', '-q', '--allow-empty', '-m', 'loom: initial commit'], { cwd: mainRoot, stdio: 'ignore' });
   }
   const id = repoId(mainRoot);                                                    // throws on a repo with no commits
@@ -175,7 +181,7 @@ export async function initRepo(cwd: string, o: { hookCmd: string; mcpPath?: stri
     const summary: InitSummary = { files: s.files, regions, degraded: s.degraded.length, sessions, people, last: last ?? null,
       compile: (cfg as LoomConfig).compile ?? null, test: cfg.testCmd ?? null };
     const committed = o.commit === true && commitLoom(mainRoot);
-    return { mainRoot, config: cfgPath, settings: sp, state, committed, pending: loomPending(mainRoot), summary, text };
+    return { mainRoot, config: cfgPath, settings: sp, state, committed, pending: loomPending(mainRoot), summary, text, withheld };
   } finally { if (!o.db) await db.close(); }
 }
 
@@ -249,6 +255,7 @@ export async function main(argv: string[]): Promise<number> {
         mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs'), loomCmd: `node ${join(loomRoot(), 'packages', 'cli', 'dist', 'loom.cjs')}` });
     } catch (e) { console.error(`loom init: ${(e as Error).message}`); return 1; }
     console.log(printSummary(r));
+    if (r.withheld.length) console.log(`not in the first commit (secrets stay untracked): ${r.withheld.join(', ')}`);
     if (r.pending) console.log('next: commit .loom/ (it carries the regions lock and session records to teammates)');
     if (!tty || rest.includes('--no-lead')) { console.log('start the lead with `loom lead`'); return 0; }
     if (!(await askYes('Start the lead now? [Y/n] '))) { console.log('start the lead later with `loom lead`'); return 0; }
