@@ -15,6 +15,7 @@ export function Plans({ go }: { go: (v: string) => void }) {
   const [d, setD] = useState<Detail | null>(null);
   const [chk, setChk] = useState<Checked | null>(null);
   const [msg, setMsg] = useState('');
+  const [model, setModel] = useState('sonnet');
   useEffect(() => {
     api<PlanRow[]>('/plans').then((r) => { setRows(r); setSel((s) => s || r[0]?.slug || ''); }).catch((e) => setErr(couldNot('plans', e)));
     api<Team[]>('/teams').then(setTeams).catch(() => {});
@@ -30,7 +31,6 @@ export function Plans({ go }: { go: (v: string) => void }) {
       <p>A plan is the Lead's split of one goal into tasks, each owning its own files. Ask the Lead to write one, or save <code>.loom/plans/&lt;name&gt;.md</code> yourself.</p>
       <div className="cardrow" style={{ justifyContent: 'center' }}><button className="btn or" onClick={() => go('lead')}>Open the Lead</button></div></div></section>);
   const check = () => post<Checked>('/plans/check', { slug: sel }).then(setChk).catch((e) => setMsg(e.message));
-  const [model, setModel] = useState('sonnet');
   const start = () => post('/teams', { plan: sel, model }).then(() => go('teams')).catch((e) => setMsg(e.message));
   const compare = () => Promise.all([true, false].map((blind) => post('/teams', { plan: sel, model, blind }))).then(() => go('teams')).catch((e) => setMsg(e.message));
   const runs = teams.filter((t) => t.plan === sel).sort((a, b) => b.startedAt - a.startedAt);
