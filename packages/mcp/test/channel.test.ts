@@ -6,6 +6,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { wantsChannel } from '../src/loom-mcp.js';
 
 const BIN = resolve(__dirname, '../dist/loom-mcp.cjs');
 const TOKEN = 'a'.repeat(32);
@@ -24,7 +25,7 @@ beforeAll(async () => {
   });
   await new Promise<void>((r) => daemon.listen(0, '127.0.0.1', () => r()));
   const home = mkdtempSync(join(tmpdir(), 'loom-home-')); writeFileSync(join(home, 'token'), TOKEN);
-  child = spawn(process.execPath, [BIN], { env: { ...process.env, LOOM_URL: `http://127.0.0.1:${(daemon.address() as any).port}`, LOOM_HOME: home, LOOM_AGENT: '', LOOM_RUN: '' },
+  child = spawn(process.execPath, [BIN], { env: { ...process.env, LOOM_URL: `http://127.0.0.1:${(daemon.address() as any).port}`, LOOM_HOME: home, LOOM_AGENT: '', LOOM_RUN: '', LOOM_LEAD: '1' },
     stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdout!.on('data', (d) => { out += d; });
   rpc({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } } });
@@ -63,4 +64,12 @@ test('a permission request from Claude is forwarded to the daemon with the pid',
   rpc({ method: 'notifications/claude/channel/permission_request', params: { request_id: 'qwert', tool_name: 'Bash', description: 'list', input_preview: 'ls' } });
   expect(await until(() => seen.some((s) => s.path === '/channels/permission'))).toBe(true);
   expect(seen.find((s) => s.path === '/channels/permission')!.body).toEqual({ pid: process.pid, request_id: 'qwert', tool_name: 'Bash', description: 'list', input_preview: 'ls' });
+});
+
+// Final review I2: a plain `claude` (no channel flag) also starts loom-mcp; it must not register a channel the session cannot read.
+test('only the lead (LOOM_LEAD=1, set by loom lead) opens a channel; plain terminals and headless agents do not', () => {
+  expect(wantsChannel({ LOOM_LEAD: '1' })).toBe(true);
+  expect(wantsChannel({})).toBe(false);
+  expect(wantsChannel({ LOOM_LEAD: '1', LOOM_AGENT: 'a1' })).toBe(false);
+  expect(wantsChannel({ LOOM_LEAD: '1', LOOM_CHANNEL: '0' })).toBe(false);
 });

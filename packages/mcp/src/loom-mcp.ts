@@ -114,12 +114,17 @@ export async function startChannel(server: McpServer, o: ChannelOpts) {
   return { port, secret, close: () => { clearInterval(tick); http.close(); } };
 }
 
+/** Only `loom lead` starts claude with the channel flag (and LOOM_LEAD=1); any other session would show "chat" and drop every message. */
+export function wantsChannel(env: NodeJS.ProcessEnv): boolean {
+  return env.LOOM_LEAD === '1' && !env.LOOM_AGENT && env.LOOM_CHANNEL !== '0';
+}
+
 async function main() {
   const url = process.env.LOOM_URL ?? 'http://127.0.0.1:4318';
   const server = createLoomMcp({ url, agent: process.env.LOOM_AGENT ?? '', run: process.env.LOOM_RUN ?? '', cwd: process.cwd() });
   await server.connect(new StdioServerTransport());
-  // headless team agents never get dashboard messages; an interactive session (the lead, or any terminal) does
-  if (!process.env.LOOM_AGENT && process.env.LOOM_CHANNEL !== '0')
+  // headless team agents and plain terminals never get dashboard messages; the lead does
+  if (wantsChannel(process.env))
     await startChannel(server, { url, home: process.env.LOOM_HOME ?? join(homedir(), '.loom'), cwd: process.cwd(), pid: process.ppid });
 }
 
