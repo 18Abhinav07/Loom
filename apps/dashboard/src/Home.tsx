@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, repoCwd, type PlanRow, type Team } from './api';
 import { agentColor } from './stream';
 import { DemoStage, LiveStage, Showdown } from './Demo';
+import { LiveShowdown } from './LiveShowdown';
 import { ago, landText, startedBy } from './explain';
 import { Bot, NO_REPO } from './ui';
 
@@ -52,6 +53,7 @@ export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
             </>} />}
           </div>
         </div>
+        {demo && <LiveShowdown />}
         {demo && <Showdown />}
       </div>
 

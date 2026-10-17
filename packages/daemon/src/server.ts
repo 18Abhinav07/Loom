@@ -28,6 +28,7 @@ import { TeamRoutes, TEAM_TOOLS } from './team/routes.js';
 import { benchCompare, brief, collab, collisions, growth, people, region, searchRegions, sessionDetail, sessions as sessionRows } from './views.js';
 import { Mirror } from './mirror.js';
 import { Channels } from './channels.js';
+import { demoSandbox } from './demosandbox.js';
 import { authorized, machineToken } from './token.js';
 
 const PY_PATH = /[\w./-]+\.py\b/g;
@@ -593,6 +594,12 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         const r = await fetch(`http://127.0.0.1:${port}/replay`, { method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ ...(await body(req)), dir: opts.demoRun ?? join(DEMO, 'run-1'), rel: 'demo/run-1' }) });
         return new Reply(r.status, await r.json());
+      }
+      if (u.pathname === '/snapshot' && !runs.has(run)) { const v = await live.snapshot(run); if (v) return v; }   // a team's run lives in Live, not in a coordinator
+      if (u.pathname === '/demo/sandbox' && req.method === 'POST') {   // the live demo's playground repo, created on first use
+        if (opts.readOnly) return new Reply(403, { error: 'read-only: the live demo runs on your own machine' });
+        try { return demoSandbox(join(import.meta.dirname ?? '.', '..', '..', '..', 'packages', 'cli', 'dist', 'loom.cjs')); }
+        catch (e) { return new Reply(500, { error: `could not set up the demo repo: ${(e as Error).message}` }); }
       }
       if (u.pathname === '/ctx') return { cwd: opts.cwd ?? process.cwd() };   // the repo the dashboard opens on when the page names none
       if (!opts.readOnly && (u.pathname === '/teams' || u.pathname.startsWith('/teams/') || u.pathname === '/plans' || u.pathname.startsWith('/plans/'))) {

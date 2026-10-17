@@ -218,7 +218,6 @@ export async function main(argv: string[]): Promise<number> {
     if (r.withheld.length) console.log(`not in the first commit (secrets stay untracked): ${r.withheld.join(', ')}`);
     if (r.pending) console.log('next: commit .loom/ (it carries the regions lock and session records to teammates)');
     if (!tty || rest.includes('--no-lead')) { console.log('start the lead with `loom lead`'); return 0; }
-    if (!(await askYes('Start the lead now? [Y/n] '))) { console.log('start the lead later with `loom lead`'); return 0; }
     return startLead(process.cwd(), {});
   }
   if (cmd === 'lead') {

@@ -67,7 +67,7 @@ export const fetchRuns = () => getJson<string[]>('/runs');
 export const fetchPlan = (run: string) => getJson<any>(`/plan?run=${encodeURIComponent(run)}`);
 
 /** Subscribe to one run: snapshot first, then events; fx older than 4 s are dropped. */
-export function useRun(run: string | null): RunState {
+export function useRun(run: string | null, pollMs = 0): RunState {
   const [st, setSt] = useState<RunState>(initial);
   useEffect(() => {
     setSt(initial());
@@ -86,9 +86,10 @@ export function useRun(run: string | null): RunState {
         clearTimeout(timer); timer = setTimeout(refetch, 500);
       }
     };
+    const poll = pollMs ? setInterval(refetch, pollMs) : undefined;
     const gc = setInterval(() => setSt((p) => (p.fx.length ? { ...p, fx: p.fx.filter((f) => Date.now() - f.at < 4000) } : p)), 1000);
-    return () => { alive = false; es.close(); clearTimeout(timer); clearInterval(gc); };
-  }, [run]);
+    return () => { alive = false; es.close(); clearTimeout(timer); clearInterval(gc); if (poll) clearInterval(poll); };
+  }, [run, pollMs]);
   return st;
 }
 

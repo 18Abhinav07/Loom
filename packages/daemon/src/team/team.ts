@@ -1,6 +1,6 @@
 // §3.4 the team: one agent per plan task, each in its own worktree with stdin open, landing through LiveRoutes' merge queue.
 // Any number of agents: N tasks make N agents; `after` orders them, nothing else caps them.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { subscriptionEnv } from '@loom/core';
@@ -17,7 +17,8 @@ import { exclude, mergeHooks, pyDirs } from './setup.js';
 export interface TeamAgentView { id: string; title: string; state: AgentState; after: string[]; sid: string; worktree: string;
   branch: string; lands: string[]; resumed: number; lastReply?: string }
 export interface TeamView { id: string; plan: string; goal: string; repo: string; leadSid: string | null; person: string;
-  landed: string; state: 'running' | 'done' | 'stopped'; agents: TeamAgentView[]; startedAt: number }
+  landed: string; state: 'running' | 'done' | 'stopped'; agents: TeamAgentView[]; startedAt: number;
+  /** The plan's test run on the landed branch once the team is done: the verdict, same for blind and Loom teams. */ result?: { pass: boolean; out: string } | null; blind?: boolean }
 export interface TeamDeps { routes: LiveRoutes; bin?: string; url?: string; hookCmd?: string; mcpPath?: string; pollMs?: number;
   onAgentEvent?(team: string, agent: string, text: string): void;
   onCollision?(team: string, c: CollisionIn): void;
@@ -42,6 +43,7 @@ export class Team {
   private readonly finished = new Promise<void>((r) => { this.fin = r; });
   private plan!: TeamPlan;
   private landed = '';
+  private result: { pass: boolean; out: string } | null = null;
   private test: string | null = null;
   private compile: string | null = null;
   private slug = '';
@@ -99,7 +101,7 @@ export class Team {
 
   view(): TeamView {
     return { id: this.id, plan: this.slug, goal: this.plan.goal, repo: this.o.repo, leadSid: this.o.leadSid ?? null, person: this.o.person,
-      landed: this.landed, state: this.st, startedAt: this.startedAt,
+      landed: this.landed, state: this.st, startedAt: this.startedAt, result: this.result, blind: this.o.blind === true,
       agents: [...this.agents.values()].map((a) => ({ id: a.t.id, title: a.t.title, state: a.state, after: a.t.after, sid: a.sid, worktree: a.wt,
         branch: a.branch, lands: a.lands, resumed: a.resumed, lastReply: a.lastReply })) };
   }
@@ -158,9 +160,27 @@ export class Team {
       if (all.every((a) => a.state !== 'running' && a.state !== 'idle' && a.state !== 'pending')) {
         if (this.parked.size) { for (const [p, tail] of [...this.parked]) { this.parked.delete(p); await this.resume(p, 'contract_break', tail); } return; }
         if (await this.checkWakes()) return;
-        this.st = 'done'; this.endProcs(); this.fin();
+        this.endProcs(); this.result = await this.verdict(); this.st = 'done'; this.fin();
       } else await this.checkWakes();
     } finally { this.settling = false; }
+  }
+
+  /** Run the plan's test on a throwaway checkout of the landed branch. */
+  private async verdict(): Promise<{ pass: boolean; out: string } | null> {
+    if (!this.test) return null;
+    const dir = join(this.o.repo, '.loom', 'wt', this.id8, '_verdict');
+    try {
+      git(this.o.repo, 'worktree', 'add', '--detach', dir, this.landed);
+      const r = await new Promise<{ pass: boolean; out: string }>((res) => {
+        let out = '';
+        const p = spawn('sh', ['-c', this.test!], { cwd: dir, env: { ...process.env, PYTHONPATH: dir } });
+        p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { out += d; });
+        const t = setTimeout(() => p.kill('SIGKILL'), 120_000);
+        p.on('close', (c) => { clearTimeout(t); res({ pass: c === 0, out: out.slice(-1200) }); });
+      });
+      return r;
+    } catch (e) { return { pass: false, out: String(e).slice(0, 400) }; }
+    finally { try { git(this.o.repo, 'worktree', 'remove', '--force', dir); } catch { /* best effort */ } }
   }
 
   private endProcs() { clearInterval(this.timer); for (const a of this.agents.values()) a.proc?.stop(); }

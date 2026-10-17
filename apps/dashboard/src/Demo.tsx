@@ -34,7 +34,8 @@ export function demoModel(st: RunState): DemoModel {
   const files: DemoModel['files'] = [];
   for (const [sym, r] of rows) { const f = dir(fileOf(sym)); let g = files.find((x) => x.file === f); if (!g) files.push(g = { file: f, rows: [] }); g.rows.push({ name: r.name, holder: r.holder, waiter: r.waiter }); }
   const cap = [...events].reverse().find((e) => ['lease.denied', 'notice.created', 'change.landed', 'lease.granted'].includes(e.type));
-  const caption = !cap ? 'Starting the recorded run…'
+  const l0 = snap.leases[0]; const n0 = snap.notices.at(-1);
+  const caption = !cap ? (l0 ? `${l0.agent} locks ${fn(l0.symbol)} before editing it.` : n0 ? `${n0.agent} is told: ${n0.text.split('\n')[0].replace(/^\[loom\] /, '')}` : 'Starting the run…')
     : cap.type === 'lease.denied' ? `${cap.agent} needs ${fn(symsOf(cap)[0])}, which ${cap.data.holder} holds. ${cap.agent} waits its turn instead of colliding.`
     : cap.type === 'notice.created' ? `${cap.data.author} changed ${fn(cap.data.symbol)}. ${cap.agent} calls it, so ${cap.agent} is told.`
     : cap.type === 'change.landed' ? `${cap.agent}'s work merged, every call still fits, tests pass: it landed on the shared branch.`
@@ -62,8 +63,8 @@ export function LiveStage({ idle }: { idle: React.ReactNode }) {
   return <RunStage run={run} label="live · this repo" />;
 }
 
-function RunStage({ run, label, err, onReplay }: { run: string | null; label: string; err?: string; onReplay?: () => void }) {
-  const m = demoModel(useRun(run));
+export function RunStage({ run, label, err, onReplay, pollMs }: { run: string | null; label: string; err?: string; onReplay?: () => void; pollMs?: number }) {
+  const m = demoModel(useRun(run, pollMs));
   return (
     <>
       <div className="bar">
