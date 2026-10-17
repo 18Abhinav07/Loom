@@ -73,15 +73,26 @@ export function Home({ go }: { go: Go }) {
               <span><b>{count(['waiting', 'blocked'])}</b>waiting</span><span><b>{live ? live.agents.reduce((n, a) => n + a.lands.length, 0) : 0}</b>landed</span>
               <span className="sp" /><span>{live ? 'live now' : 'no team yet'}</span>
             </div>
-            {!live ? (
-              <div className="empty"><Bot color="#9A988F" size={52} mode="m-back" /><p style={{ marginTop: 10 }}>No team running.</p><p className="dim">Describe some work on the left, or start a team from a plan below.</p></div>
-            ) : (
-              <div className="stack">
-                <b className="serif" style={{ fontSize: 17 }}>{live.plan}</b>
-                {live.agents.map((a) => (
-                  <div key={a.id} className="row"><span className="cardrow"><Bot color={agentColor(a.id)} size={30} mode={a.state === 'working' ? 'm-work' : ''} /><b>{a.id}</b><span className="dim">{a.title}</span></span><span className={`state st-${a.state === 'working' || a.state === 'starting' ? 'working' : a.state === 'waiting' || a.state === 'blocked' ? 'waiting' : a.lands.length ? 'landed' : 'idle'}`}>{a.state}</span></div>))}
-                <button className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={() => go('teams')}>Open the team →</button>
-              </div>)}
+            {(() => {
+              const ags = live?.agents.slice(0, 4) ?? [];
+              const landed = live ? live.agents.reduce((n, a) => n + a.lands.length, 0) : 0;
+              return (
+                <div className="floor" style={{ height: 340 }}>
+                  {ags.length === 0
+                    ? <div className="empty" style={{ paddingTop: 40 }}><Bot color="#9A988F" size={56} mode="m-back" /><p style={{ marginTop: 10 }}>No team running.</p><p className="dim">Describe some work on the left, or start a team from a plan below.</p></div>
+                    : ags.map((a, i) => (
+                      <div key={a.id} className="agent5" style={{ [i % 2 ? 'right' : 'left']: '2%', top: 8 + Math.floor(i / 2) * 120 } as never}>
+                        <div className="bw"><Bot color={agentColor(a.id)} size={54} mode={a.state === 'working' || a.state === 'starting' ? 'm-work' : ''} /></div>
+                        <div className="nm">{a.id}</div><div className="st">{a.title || a.state}</div>
+                      </div>))}
+                  <div className="h5lane">
+                    <div className="lbl">Shared branch</div>
+                    <div className="gates"><div className="gate"><i>·</i>Merges</div><span className="garrow">→</span><div className="gate"><i>·</i>Callers fit</div><span className="garrow">→</span><div className="gate"><i>·</i>Tests pass</div></div>
+                    <div className="landed5">{Array.from({ length: 3 }, (_, i) => <div key={i} className="slot">{i < landed ? '✓' : ''}</div>)}</div>
+                  </div>
+                </div>);
+            })()}
+            {live && <button className="btn ghost sm" style={{ margin: '10px 14px' }} onClick={() => go('teams')}>Open the team →</button>}
           </div>
         </div>
       </div>

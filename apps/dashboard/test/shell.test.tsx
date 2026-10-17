@@ -47,3 +47,14 @@ it('the live dot shows on Team only while a team is running', async () => {
   const { container } = render(<App />);
   await waitFor(() => expect(container.querySelector('.tab .ldot')).toBeTruthy());
 });
+
+it('Home draws each running agent as a robot on the floor with its task and the landed count', async () => {
+  const t = { id: 't', plan: 'p', goal: 'g', state: 'running', startedAt: 1, agents: [
+    { id: 'slug', title: 'Make slugify strict', state: 'working', after: [], sid: 's', branch: 'b', lands: [] },
+    { id: 'caps', title: 'Fix capfirst', state: 'done', after: [], sid: 's2', branch: 'b2', lands: ['c1'] }] };
+  mockApi({ ...base, '/teams': [t], '/plans': [], '/brief': { text: '' } });
+  const { container } = render(<App />);
+  expect(await screen.findByText('Make slugify strict')).toBeTruthy();
+  expect(container.querySelectorAll('.floor .agent5').length).toBe(2);
+  expect(container.querySelectorAll('.landed5 .slot')[0].textContent).toBe('✓');
+});
