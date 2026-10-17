@@ -559,3 +559,17 @@ table.grid td{padding:9px 10px;border-bottom:1px solid var(--line2)}
 .pairs{display:grid;gap:6px;margin-top:12px}.pair{display:grid;grid-template-columns:1fr 1fr 70px 70px;gap:10px;padding:8px 12px;border:1px solid var(--line2);border-radius:10px;font-size:12.5px}
 .bench h1{font:600 30px var(--serif)}.bench h3{font:600 17px var(--serif);margin:0 0 6px}.bench details{margin-top:20px}.bench summary{cursor:pointer;color:var(--ink2)}
 .page h2,.page h3{font-family:var(--serif)} .collab{margin-top:8px}
+
+.hcopy .h5chip{margin-bottom:6px}
+.hcopy>p{margin-bottom:0;line-height:1.6}
+.showdown{margin-top:28px;padding:22px 26px}
+.showdown h3{font:600 20px var(--serif);margin:0 0 4px}
+.sdgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px}
+.sdcol{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--card)}
+.sdcol.loom{border-color:#3F8F6B55;background:#3F8F6B0d}
+.sdh{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
+.sdbots{display:flex;gap:14px;justify-content:center;padding:6px 0}
+.sdbot{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px}
+.sdbot.pass span{color:#3F8F6B}.sdbot.broke span,.sdbot.conflict span{color:#C05A4A}
+.sdn{text-align:center;margin-top:8px;font-size:13px;color:var(--ink2)}.sdn b{font:600 22px var(--serif);color:var(--ink)}
+@media (max-width:1180px){.sdgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}

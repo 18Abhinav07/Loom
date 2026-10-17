@@ -1,6 +1,6 @@
 // Demo mode: replays the recorded real run (3 Claude agents on one codebase) through the same event stream a live team uses.
 import { useEffect, useState } from 'react';
-import { post } from './api';
+import { post, type Compare } from './api';
 import { getJson } from './stream';
 import { agentColor, useRun, type LoomEvent, type RunState } from './stream';
 import { Bot } from './ui';
@@ -93,5 +93,35 @@ function RunStage({ run, label, err, onReplay }: { run: string | null; label: st
       </div>
       <div className="h5cap"><span className="n">{m.landed + m.waiting + 1}</span><p>{m.caption}</p>{onReplay && <div className="ctl"><button onClick={onReplay} title="Replay" aria-label="Replay">↺</button></div>}</div>
     </>
+  );
+}
+
+/** The 3 v 3 head-to-head from StaleBench: per scenario, three real Haiku runs without Loom next to three with it. Numbers come from /bench/compare, nothing is estimated. */
+export function Showdown() {
+  const [cmp, setCmp] = useState<Compare | null>(null);
+  useEffect(() => { getJson<Compare>('/bench/compare').then(setCmp).catch(() => setCmp(null)); }, []);
+  const rows = cmp?.e5 ?? [];
+  if (!rows.length) return null;
+  const trials = (side: { all_pass: number; n: number; broken: number; conflicts: number }) => {
+    const out: ('pass' | 'broke' | 'conflict')[] = [];
+    for (let i = 0; i < side.all_pass; i++) out.push('pass');
+    for (let i = 0; i < side.conflicts; i++) out.push('conflict');
+    while (out.length < side.n) out.push('broke');
+    return out.slice(0, side.n);
+  };
+  const word = { pass: 'passed', broke: 'broke', conflict: 'conflict' } as const;
+  return (
+    <div className="card showdown" data-testid="showdown">
+      <h3>3 agents without Loom vs 3 agents with it</h3>
+      <p className="dim">Same Claude Haiku agents, same open-source Python codebase, same tasks. Each robot is one run: did the merged work pass its tests?</p>
+      <div className="sdgrid">
+        {rows.map((s) => (['blind', 'loom'] as const).map((c) => (
+          <div key={`${s.scenario}${c}`} className={`sdcol ${c}`}>
+            <div className="sdh"><b>{c === 'loom' ? 'With Loom' : 'Without Loom'}</b><span className="dim">{s.scenario.replace(/^[a-z]\d+_/, '').replace(/_/g, ' ')}</span></div>
+            <div className="sdbots">{trials(s[c]).map((t, i) => <div key={i} className={`sdbot ${t}`}><Bot color={t === 'pass' ? '#3F8F6B' : '#C05A4A'} size={44} /><span>{word[t]}</span></div>)}</div>
+            <div className="sdn"><b>{s[c].all_pass}/{s[c].n}</b> passed</div>
+          </div>)))}
+      </div>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, repoCwd, type PlanRow, type Team } from './api';
 import { agentColor } from './stream';
-import { DemoStage, LiveStage } from './Demo';
+import { DemoStage, LiveStage, Showdown } from './Demo';
 import { ago, landText, startedBy } from './explain';
 import { Bot, NO_REPO } from './ui';
 
@@ -29,7 +29,7 @@ export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
               : <span className="h5chip reveal"><span className="ldot" /><b>{repo === 'ready' ? 'Ready' : 'Checking'}</b> · {base(cwd) || 'this repo'}</span>}
             <h1 className="reveal" style={{ '--i': 1 } as never}>Run a team of coding agents on one repo. <em>Nothing breaks.</em></h1>
             <p className="reveal" style={{ '--i': 2 } as never}>Describe the work. The Lead splits it into tasks and starts one Claude agent per task. Loom makes them take turns on the same function, tells them when code they use changes, and only lets in work that still runs.</p>
-            <div className="row reveal" style={{ '--i': 3, gap: 12, alignItems: 'center' } as never}><button className="btn or" onClick={() => go('lead')}>Plan with the Lead →</button><span className="hint">or <code>loom lead</code> in the terminal</span><a className="hint" href="?view=bench" onClick={(e) => { e.preventDefault(); go('bench'); }}>See the benchmark →</a></div>
+            <div className="row reveal" style={{ '--i': 3, gap: 14, alignItems: 'center', flexWrap: 'wrap', marginTop: 26 } as never}><button className="btn or" onClick={() => go('lead')}>Plan with the Lead →</button><span className="hint">or <code>loom lead</code> in the terminal</span><a className="hint" href="?view=bench" onClick={(e) => { e.preventDefault(); go('bench'); }}>See the benchmark →</a></div>
           </div>
 
           <div className="card h5stage reveal" style={{ '--i': 2 } as never}>
@@ -52,6 +52,7 @@ export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
             </>} />}
           </div>
         </div>
+        {demo && <Showdown />}
       </div>
 
     </section>
