@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { agentColor } from './stream';
 
 export const NO_REPO = /not a Loom repo/i;
 
@@ -43,3 +44,9 @@ export function Page({ title, sub, children }: { title: string; sub?: string; ch
     </section>
   );
 }
+
+/** Title + one-line "what is this" for the Beta screens, so none of them is a bare chart or table. */
+export const PageHead = ({ title, what, children }: { title: string; what: string; children?: ReactNode }) => (
+  <div className="pghead"><div><h1>{title}</h1><p className="dim">{what}</p></div>{children}</div>);
+export const Avatar = ({ name, size = 30 }: { name: string; size?: number }) => (
+  <span className="avatar" style={{ width: size, height: size, background: agentColor(name), fontSize: size * 0.42 }}>{name.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '?'}</span>);

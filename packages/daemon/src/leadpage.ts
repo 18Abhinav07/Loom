@@ -22,7 +22,7 @@ h1 { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(-
 .t.user, .t.dashboard { align-self:flex-end; background:#f1ede2; border-color:#e6e2d6 }
 .tool { color:var(--mut); font:12px ui-monospace,monospace; overflow-wrap:anywhere } #perms .p { border:1px solid var(--warn); border-radius:10px; padding:10px; margin-bottom:8px; background:#fff8ee }
 pre { margin:6px 0; white-space:pre-wrap; overflow-wrap:anywhere; font:12px ui-monospace,monospace }
-form { display:flex; gap:8px; align-items:flex-end } textarea { flex:1; min-height:48px; max-height:140px; border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:var(--card); color:var(--fg); font:inherit; resize:vertical }
+form { display:flex; gap:8px; align-items:flex-end; flex:none; padding-top:6px } textarea { flex:1; min-height:46px; max-height:180px; overflow-y:auto; border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:var(--card); color:var(--fg); font:inherit; resize:none; display:block }
 textarea:focus { outline:2px solid #d9775744; border-color:var(--acc) }
 button.b { border:0; border-radius:10px; padding:11px 18px; background:var(--acc); color:#fff; font-weight:600; cursor:pointer } button.b:hover { filter:brightness(.95) } button.d { background:#8a4b2a } #status { min-height:18px }
 </style></head><body><main>
@@ -34,7 +34,11 @@ const T = ${JSON.stringify(token)};
 const api = (p, o = {}) => fetch('/lead/api' + p, { ...o, headers: { 'x-loom-token': T, 'content-type': 'application/json' } });
 const $ = (id) => document.getElementById(id);
 let cur = null, rows = [];
+const fit = () => { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, 180) + 'px'; };
 $('text').value = new URLSearchParams(location.search).get('say') ?? '';
+$('text').addEventListener('input', fit);
+$('text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('form').requestSubmit(); } });
+fit();
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 function turn(t) { const e = el('div', 't ' + t.from, t.text); $('turns').append(e); e.scrollIntoView({ block: 'end' }); }
 function tool(t) { $('turns').append(el('div', 'tool', (t.ok === false ? '✗ ' : '· ') + t.name + (t.target ? ' ' + t.target : ''))); }
@@ -65,7 +69,7 @@ async function open(sid) {
 }
 $('form').onsubmit = async (ev) => { ev.preventDefault(); const text = $('text').value.trim(); if (!cur || !text) return;
   const r = await api('/sessions/' + cur + '/messages', { method: 'POST', body: JSON.stringify({ text }) }); const j = await r.json();
-  $('status').textContent = r.ok ? (j.status === 'held' ? 'held: the session is busy; it goes in after this turn' : 'sent') : j.error; if (r.ok) $('text').value = ''; };
+  $('status').textContent = r.ok ? (j.status === 'held' ? 'held: the session is busy; it goes in after this turn' : 'sent') : j.error; if (r.ok) { $('text').value = ''; fit(); } };
 const es = new EventSource('/lead/api/events?token=' + T);
 es.onmessage = (m) => { const e = JSON.parse(m.data);
   if (e.kind === 'state') return void sessions();
