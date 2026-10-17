@@ -7,7 +7,7 @@ import { LoomDb, type LoomGraph } from '@loom/core';
 import { loadPlan } from '@loom/planner';
 import { regionsCmd } from './regions.js';
 import { exitCode, runPlan } from './run.js';
-import { runPlan2 } from './run2.js';
+import { teamCmd } from './team.js';
 import { resolveAttach, resolveRepo } from '@loom/daemon';
 import { addLesson, DEFAULT_EXCLUDES, ensureLoomDir, finishSession, gitTry, graphName, importSessions, indexRepo, installGitHooks, lessonsFor,
   postCommit, preCommit, readActive, readConfig, reconcile, repoId, sync, type LoomConfig } from '@loom/memory';
@@ -417,25 +417,29 @@ export async function main(argv: string[]): Promise<number> {
     for (const t of p.tasks) console.log(`\n${t.id}: ${t.scope.join(', ') || '(no symbols matched)'}`);
     return 0;
   }
+  if (cmd === 'team') return teamCmd(rest, DAEMON);
   if (cmd === 'run') {
     const file = flag(rest, '--plan');
-    if (!file) { console.error('usage: loom run --plan <file> [--model sonnet] [--claude <bin>] [--max N] [--blind | --v1] [--report out.json]'); return 1; }
-    const blind = rest.includes('--blind');   // the no-Loom baseline (bench E5)
-    if (!blind && !(await healthy())) { console.error('daemon not running (run loom up)'); return 1; }
-    const plan = loadPlan(file);
-    // R6.3: v2 (land-as-you-go through the daemon's merge queue) is the default; the blind baseline and --v1 keep the merge-at-end flow
-    const rep = await (blind || rest.includes('--v1') ? runPlan : runPlan2)({ repo: plan.repo ? resolve(dirname(file), plan.repo.replace(/^~(?=\/|$)/, homedir())) : git(process.cwd(), 'rev-parse', '--show-toplevel'), plan,
-      model: flag(rest, '--model'), claudeBin: flag(rest, '--claude'), maxParallel: flag(rest, '--max') ? Number(flag(rest, '--max')) : undefined,
-      url: DAEMON, blind, hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`,
-      mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs') });
-    table(`run ${rep.run}`, ['agent', 'exit', 'resumed', 'commit', 'session'],
-      rep.workers.map((w) => [w.agent, String(w.exit), String(w.resumed), w.commit?.slice(0, 7) ?? '-', w.sessionId ?? '-']));
-    console.log(`\nmerge ${rep.merge.branch}: ${rep.merge.conflict ? `CONFLICT ${rep.merge.conflict}` : 'clean'}`
-      + `; tests ${rep.merge.testsPassed === null ? 'not run' : rep.merge.testsPassed ? 'passed' : 'FAILED'}`);
-    if (rep.merge.testsPassed === false) console.log(rep.merge.testOutputTail);
-    const out = flag(rest, '--report');
-    if (out) { mkdirSync(dirname(resolve(out)), { recursive: true }); writeFileSync(out, JSON.stringify(rep, null, 2)); }
-    return exitCode(rep);
+    if (!file) { console.error('usage: loom run --plan <file> [--model sonnet] [--blind] [--report out.json]   (--v1: the old merge-at-end flow with a v1 plan file)'); return 1; }
+    if (rest.includes('--v1')) {   // the merge-at-end flow: a v1 plan file, no daemon
+      const plan = loadPlan(file);
+      const rep = await runPlan({ repo: plan.repo ? resolve(dirname(file), plan.repo.replace(/^~(?=\/|$)/, homedir())) : git(process.cwd(), 'rev-parse', '--show-toplevel'), plan,
+        model: flag(rest, '--model'), claudeBin: flag(rest, '--claude'), maxParallel: flag(rest, '--max') ? Number(flag(rest, '--max')) : undefined,
+        url: DAEMON, blind: rest.includes('--blind'), hookCmd: `node ${join(loomRoot(), 'packages', 'hook', 'dist', 'loom-hook.cjs')}`,
+        mcpPath: join(loomRoot(), 'packages', 'mcp', 'dist', 'loom-mcp.cjs') });
+      table(`run ${rep.run}`, ['agent', 'exit', 'resumed', 'commit', 'session'],
+        rep.workers.map((w) => [w.agent, String(w.exit), String(w.resumed), w.commit?.slice(0, 7) ?? '-', w.sessionId ?? '-']));
+      console.log(`\nmerge ${rep.merge.branch}: ${rep.merge.conflict ? `CONFLICT ${rep.merge.conflict}` : 'clean'}`
+        + `; tests ${rep.merge.testsPassed === null ? 'not run' : rep.merge.testsPassed ? 'passed' : 'FAILED'}`);
+      if (rep.merge.testsPassed === false) console.log(rep.merge.testOutputTail);
+      const out = flag(rest, '--report');
+      if (out) { mkdirSync(dirname(resolve(out)), { recursive: true }); writeFileSync(out, JSON.stringify(rep, null, 2)); }
+      return exitCode(rep);
+    }
+    if (!(await healthy())) { console.error('daemon not running (run loom up)'); return 1; }
+    // the daemon owns the team: `loom run` is `loom team start --wait` on the plan file, in this repo
+    const pass = ['--model', '--report'].flatMap((f) => (flag(rest, f) ? [f, flag(rest, f)!] : []));
+    return teamCmd(['start', file, '--wait', ...(rest.includes('--blind') ? ['--blind'] : []), ...pass], DAEMON);
   }
   if (cmd === 'ui') {
     const run = flag(rest, '--run') ?? resolveAttach(process.cwd())?.run;
@@ -444,7 +448,7 @@ export async function main(argv: string[]): Promise<number> {
     if (!rest.includes('--no-open')) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
     return 0;
   }
-  console.log('usage: loom init | up | down | status [--release <agent>] | why <target> [--run R] | verify [task] [--run R] | lesson add|list|rm | merge-check <a> <b> [--run R] | plan (--plan F | "goal") | run --plan F | ui [--run R]');
+  console.log('usage: loom init | up | down | status [--release <agent>] | why <target> [--run R] | verify [task] [--run R] | lesson add|list|rm | merge-check <a> <b> [--run R] | plan (--plan F | "goal") | team start|status|stop|merge|msg | run --plan F | ui [--run R]');
   return cmd ? 1 : 0;
 }
 

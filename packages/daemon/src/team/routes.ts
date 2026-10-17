@@ -1,6 +1,6 @@
 // §3.4 the daemon's teams: one Team per started plan, driven from the dashboard, the CLI and the lead's MCP tools.
 import { execFileSync } from 'node:child_process';
-import { resolve, relative, isAbsolute } from 'node:path';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import type { Bus } from '../bus.js';
@@ -32,15 +32,13 @@ export class TeamRoutes {
     return [...this.d.mirror.live.values()].filter((l) => l.repo === repo && l.channel).sort((a, b) => b.last - a.last)[0];
   }
 
-  async start(b: { cwd: string; plan: string; leadSid?: string | null; model?: string }): Promise<{ ok: true; team: TeamView } | { ok: false; problems: string[] }> {
+  async start(b: { cwd: string; plan: string; leadSid?: string | null; model?: string; blind?: boolean }): Promise<{ ok: true; team: TeamView } | { ok: false; problems: string[] }> {
     const plan = String(b.plan ?? '');
     if (!plan) return { ok: false, problems: ['need {plan}: a slug in .loom/plans/ or a plan file'] };
     const slug = /^[\w.-]+$/.test(plan) && !plan.endsWith('.md');
     const c = await this.d.check(b.cwd, slug ? { slug: plan } : { file: plan });
     if (!c.ok || !c.top) return { ok: false, problems: c.problems.length ? c.problems : ['not a Loom repo (run loom init)'] };
     const planPath = slug ? join(c.top, '.loom', 'plans', `${plan}.md`) : resolve(b.cwd, plan);
-    const rel = relative(c.top, planPath);
-    if (rel.startsWith('..') || isAbsolute(rel)) return { ok: false, problems: [`plan ${plan} is outside the repo`] };
     const lead = this.lead(c.top, b.leadSid);
     const person = lead?.person ?? gitEmail(c.top);
     const me = this;
@@ -52,7 +50,7 @@ export class TeamRoutes {
         if (l) void me.d.channels.send(l, `[team ${team?.view().plan ?? id}] ${agent}: ${clip(text)}`, { from: `agent:${agent}` }).catch(() => {});
       },
       onTeam(id, e) { me.d.bus.publish({ repo: c.top!, sid: lead?.sid ?? id, kind: 'team', data: { team: id, ...e } }); } },
-    { repo: c.top, planPath, leadSid: lead?.sid ?? null, person, model: b.model });
+    { repo: c.top, planPath, leadSid: lead?.sid ?? null, person, model: b.model, blind: b.blind });
     team = t;
     this.teams.set(t.id, t); this.leads.set(t.id, lead?.sid ?? null);
     return { ok: true, team: t.view() };

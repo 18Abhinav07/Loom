@@ -365,7 +365,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
         if (!repo) return send(404, { error: 'not a Loom repo (run loom init)' });
         if (req.method === 'GET' && parts.length === 1) return send(200, teams.list(repo.top));
         if (req.method === 'POST' && parts.length === 1) {
-          const r = await teams.start({ cwd, plan: String(b.plan ?? ''), leadSid: b.leadSid, model: b.model });
+          const r = await teams.start({ cwd, plan: String(b.plan ?? ''), leadSid: b.leadSid, model: b.model, blind: b.blind === true });
           return send(r.ok ? 200 : 400, r);
         }
         const id = parts[1];

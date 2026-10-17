@@ -1,5 +1,5 @@
 // §3.4 Team scheduler: N agents, `after` order, crash handling, isolation between teams, session events. Fake claude, real FalkorDB.
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { LoomDb } from '@loom/core';
@@ -72,4 +72,16 @@ test("an agent's session event names parent, team, plan, task and person", async
   const sid = v.agents[0].sid;
   const first = JSON.parse(readFileSync(join(r, '.loom', 'sessions', `${sid}.a.jsonl`), 'utf8').split('\n')[0]);
   expect(first).toMatchObject({ type: 'session', kind: 'agent', parent: 'LEAD', team: t.id, plan: 'ev', task: 'a', person: 'ann@x' });
+}, 30_000);
+
+test('a blind team gets no hooks, no Loom tools and the blind prompt, and still lands', async () => {
+  const r = repo();
+  const t = await Team.start({ routes, bin: BIN, pollMs: 100, hookCmd: 'node hook.cjs', mcpPath: '/x/mcp.cjs' },
+    { repo: r, planPath: plan(r, 'blind', [{ id: 'a' }]), person: 'ann@x', blind: true });
+  runs.push(t.id);
+  expect(states(await t.done())).toEqual({ a: 'landed' });
+  const wt = join(r, '.loom', 'wt', t.id.slice(-8).toLowerCase(), 'a');
+  expect(existsSync(join(wt, '.loom-mcp.json'))).toBe(false);
+  expect(existsSync(join(wt, '.claude', 'settings.local.json'))).toBe(false);
+  expect(readFileSync(join(wt, readdirSync(wt).find((f) => f.startsWith('fake-'))!), 'utf8')).toContain('may be changing shared code');
 }, 30_000);

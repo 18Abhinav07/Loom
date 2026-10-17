@@ -11,7 +11,7 @@ import type { LandResult } from '../live/queue.js';
 import type { LiveRoutes } from '../live/routes.js';
 import { AgentProc, type AgentState } from './agent.js';
 import { writeCollision, type CollisionIn } from './collide.js';
-import { allowedTools, MAX_RESUMES, SUFFIX_TEAM } from './prompt.js';
+import { allowedTools, MAX_RESUMES, SUFFIX_BLIND, SUFFIX_TEAM } from './prompt.js';
 import { exclude, mergeHooks, pyDirs } from './setup.js';
 
 export interface TeamAgentView { id: string; title: string; state: AgentState; after: string[]; sid: string; worktree: string;
@@ -48,9 +48,9 @@ export class Team {
   private startedAt = Date.now();
   private settling = false;
 
-  private constructor(private readonly d: TeamDeps, private readonly o: { repo: string; planPath: string; leadSid?: string | null; person: string; model?: string; maxParallel?: number }) {}
+  private constructor(private readonly d: TeamDeps, private readonly o: { repo: string; planPath: string; leadSid?: string | null; person: string; model?: string; maxParallel?: number; blind?: boolean }) {}
 
-  static async start(d: TeamDeps, o: { repo: string; planPath: string; leadSid?: string | null; person: string; model?: string; maxParallel?: number }): Promise<Team> {
+  static async start(d: TeamDeps, o: { repo: string; planPath: string; leadSid?: string | null; person: string; model?: string; maxParallel?: number; blind?: boolean }): Promise<Team> {
     const t = new Team(d, { ...o, repo: resolve(o.repo) });
     await t.init();
     return t;
@@ -77,13 +77,13 @@ export class Team {
     git(repo, 'branch', this.landed, base);
     const prev = this.d.routes.onCollision;
     this.d.routes.onCollision = (run, c) => (run === this.id ? this.collide(c) : prev?.(run, c));
-    await this.d.routes.addRun({ run: this.id, repo, landed: this.landed, dirs: cfg.dirs ?? pyDirs(repo), test: this.test, compile: this.compile });
+    await this.d.routes.addRun({ run: this.id, repo, landed: this.landed, dirs: cfg.dirs ?? pyDirs(repo), test: this.o.blind ? null : this.test, compile: this.o.blind ? null : this.compile });
     this.team('started', undefined, `${plan.tasks.length} tasks`);
     for (const t of plan.tasks) {
       const wt = join(repo, '.loom', 'wt', this.id8, t.id); const branch = `loom/${this.id8}/${t.id}`;
       git(repo, 'worktree', 'add', '-q', wt, '-b', branch, base);
-      if (this.d.hookCmd) mergeHooks(join(wt, '.claude', 'settings.local.json'), this.d.hookCmd);
-      if (this.d.mcpPath) writeFileSync(join(wt, '.loom-mcp.json'), JSON.stringify({ mcpServers: { loom: { command: 'node', args: [this.d.mcpPath],
+      if (this.d.hookCmd && !this.o.blind) mergeHooks(join(wt, '.claude', 'settings.local.json'), this.d.hookCmd);
+      if (this.d.mcpPath && !this.o.blind) writeFileSync(join(wt, '.loom-mcp.json'), JSON.stringify({ mcpServers: { loom: { command: 'node', args: [this.d.mcpPath],
         env: { LOOM_URL: this.d.url ?? '', LOOM_RUN: this.id, LOOM_AGENT: t.id } } } }, null, 2));
       await this.d.routes.addAgent({ run: this.id, agent: t.id, worktree: wt, task: t.id, title: t.title, scope: t.owns });
       const sid = ulid();
@@ -110,8 +110,9 @@ export class Team {
   private launch(a: A, prompt: string, resume?: string) {
     const trace = join(this.o.repo, '.git', 'loom', 'runs', this.id8, `${a.t.id}.jsonl`);
     const p = new AgentProc({ id: a.t.id, cwd: a.wt, prompt, bin: this.d.bin, model: this.o.model, resume, traceFile: trace,
-      allowed: allowedTools({ test: this.test, compile: this.compile }), mcpConfig: this.d.mcpPath ? join(a.wt, '.loom-mcp.json') : undefined,
-      env: { ...subscriptionEnv(process.env), LOOM_RUN: this.id, LOOM_AGENT: a.t.id, LOOM_URL: this.d.url ?? '' } });
+      allowed: allowedTools({ test: this.test, compile: this.compile, blind: this.o.blind }),
+      mcpConfig: this.d.mcpPath && !this.o.blind ? join(a.wt, '.loom-mcp.json') : undefined,
+      env: this.o.blind ? subscriptionEnv(process.env) : { ...subscriptionEnv(process.env), LOOM_RUN: this.id, LOOM_AGENT: a.t.id, LOOM_URL: this.d.url ?? '' } });
     a.proc = p; a.state = 'running';
     p.on('reply', (text: string) => { a.lastReply = text; this.d.onAgentEvent?.(this.id, a.t.id, text); });
     p.on('result', (r: { ok: boolean; sessionId?: string }) => {
@@ -127,6 +128,8 @@ export class Team {
     p.start();
     this.team('agent_started', a.t.id);
   }
+
+  private suffix() { return this.o.blind ? SUFFIX_BLIND : SUFFIX_TEAM; }
 
   /** The Live layer names agents; the team knows their people and sessions. */
   private collide(c: CollisionIn) {
@@ -150,7 +153,7 @@ export class Team {
         if (active >= max) break;
         if (a.state !== 'pending' || !a.t.after.every((d) => this.agents.get(d)?.state === 'landed')) continue;
         if (a.t.after.length) { try { await handover(a.wt, this.landed); } catch { /* the agent sees the conflict markers or nothing new */ } }
-        active++; this.launch(a, a.t.prompt + SUFFIX_TEAM);
+        active++; this.launch(a, a.t.prompt + this.suffix());
       }
       if (all.every((a) => a.state !== 'running' && a.state !== 'idle' && a.state !== 'pending')) {
         if (this.parked.size) { for (const [p, tail] of [...this.parked]) { this.parked.delete(p); await this.resume(p, 'contract_break', tail); } return; }
@@ -202,7 +205,8 @@ export class Team {
   }
 
   private async resume(a: A, status: LandResult['status'], tail: string) {
-    if (a.resumed >= MAX_RESUMES || !a.proc?.running) { a.state = 'failed'; return void this.settle(); }
+    if (this.o.blind || a.resumed >= MAX_RESUMES || !a.proc?.running) {   // a blind agent is never told why
+      a.state = 'failed'; return void this.settle(); }
     const h = await handover(a.wt, this.landed);
     const why = status === 'tests_failed'
       ? `[loom] your work did not land: the tests failed after merging it with the landed work. Fix it so the tests pass. Output:\n${tail}`
@@ -238,7 +242,7 @@ export class Team {
     a.proc?.stop(); a.resumed = 0;
     if (this.st !== 'running') { this.st = 'running'; this.timer = setInterval(() => void this.settle(), this.d.pollMs ?? 1500); this.timer.unref(); }
     try { await handover(a.wt, this.landed); } catch { /* conflict markers are the agent's to resolve */ }
-    this.launch(a, a.t.prompt + SUFFIX_TEAM + (note ? `\n\n[loom] restarted: ${note}` : ''), a.sessionId);
+    this.launch(a, a.t.prompt + this.suffix() + (note ? `\n\n[loom] restarted: ${note}` : ''), a.sessionId);
     return { ok: true };
   }
   async stop() {
