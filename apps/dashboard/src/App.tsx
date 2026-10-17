@@ -76,7 +76,7 @@ export function App() {
         {tab.views.length > 1 && (
           <div className="subtabs">{tab.views.map((v) => <button key={v} className={`chip ${v === view ? 'on' : ''}`} onClick={() => setView(v)}>{SUB[v]}</button>)}</div>)}
         {view === 'home' ? <Home go={go} demo={demo} /> : view === 'bench' ? <Bench /> : view === 'lead' ? <Lead say={say} /> : view === 'plans' ? <Plans go={go} />
-          : view === 'teams' ? <Teams go={go} /> : view === 'sessions' ? <Sessions /> : view === 'people' ? <People /> : view === 'collisions' ? <Collisions />
+          : view === 'teams' ? <Teams go={go} /> : view === 'sessions' ? <Sessions /> : view === 'people' ? <People /> : view === 'collisions' ? <Collisions go={go as never} newTeam={newTeam} />
           : view === 'functions' ? <Functions demo={demo} /> : <Growth />}
       </main>
     </>
