@@ -1,5 +1,6 @@
 // §3.4 the daemon's teams: one Team per started plan, driven from the dashboard, the CLI and the lead's MCP tools.
 import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -19,6 +20,15 @@ export interface TeamRoutesDeps { routes: LiveRoutes; channels: Channels; mirror
 export const TEAM_TOOLS = ['start_team', 'team_status', 'message_agent', 'stop_team', 'stop_agent', 'restart_agent'] as const;
 const loomRoot = () => resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..', '..');   // packages/daemon/src/team -> repo root
 const gitEmail = (top: string) => { try { return execFileSync('git', ['-C', top, 'config', 'user.email'], { encoding: 'utf8' }).trim() || 'unknown'; } catch { return 'unknown'; } };
+const snapDir = (repo: string) => join(repo, '.loom', 'teams');
+/** Team history survives a daemon restart: each team's view is written to .loom/teams/<id>.json as it changes. */
+function snapshot(v: TeamView) { try { mkdirSync(snapDir(v.repo), { recursive: true }); writeFileSync(join(snapDir(v.repo), `${v.id}.json`), JSON.stringify(v)); } catch { /* history is best-effort */ } }
+function saved(repo: string): TeamView[] {
+  try { return readdirSync(snapDir(repo)).filter((f) => f.endsWith('.json')).map((f) => {
+    const v = JSON.parse(readFileSync(join(snapDir(repo), f), 'utf8')) as TeamView;
+    return v.state === 'running' ? { ...v, state: 'stopped' as const } : v;   // it was running when the daemon went away
+  }); } catch { return []; }
+}
 const clip = (s: string, n = 1500) => (s.length > n ? s.slice(0, n) + '…' : s);
 
 export class TeamRoutes {
@@ -49,15 +59,20 @@ export class TeamRoutes {
         const l = me.lead(c.top!, lead?.sid ?? null);
         if (l) void me.d.channels.send(l, `[team ${team?.view().plan ?? id}] ${agent}: ${clip(text)}`, { from: `agent:${agent}` }).catch(() => {});
       },
-      onTeam(id, e) { me.d.bus.publish({ repo: c.top!, sid: lead?.sid ?? id, kind: 'team', data: { team: id, ...e } }); } },
+      onTeam(id, e) { if (team) snapshot(team.view()); me.d.bus.publish({ repo: c.top!, sid: lead?.sid ?? id, kind: 'team', data: { team: id, ...e } }); } },
     { repo: c.top, planPath, leadSid: lead?.sid ?? null, person, model: b.model, blind: b.blind });
-    team = t;
+    team = t; snapshot(t.view()); void t.done().then(snapshot).catch(() => {});
     this.teams.set(t.id, t); this.leads.set(t.id, lead?.sid ?? null);
     return { ok: true, team: t.view() };
   }
 
-  get(id: string): TeamView | null { return this.teams.get(id)?.view() ?? null; }
-  list(repo?: string): TeamView[] { return [...this.teams.values()].map((t) => t.view()).filter((v) => !repo || v.repo === repo).sort((a, b) => b.startedAt - a.startedAt); }
+  get(id: string): TeamView | null { return this.teams.get(id)?.view() ?? this.history().find((v) => v.id === id) ?? null; }
+  private repos = new Set<string>();
+  private history(repo?: string): TeamView[] { return [...(repo ? [repo] : this.repos)].flatMap(saved).filter((v) => !this.teams.has(v.id)); }
+  list(repo?: string): TeamView[] {
+    if (repo) this.repos.add(repo);
+    return [...this.teams.values()].map((t) => t.view()).concat(this.history(repo)).filter((v) => !repo || v.repo === repo).sort((a, b) => b.startedAt - a.startedAt);
+  }
   private no(id: string): Ok { return { ok: false, error: `no team ${id}` }; }
   async stop(id: string): Promise<Ok> { const t = this.teams.get(id); if (!t) return this.no(id); await t.stop(); return { ok: true }; }
   async merge(id: string, into?: string) { const t = this.teams.get(id); return t ? t.merge(into) : this.no(id); }

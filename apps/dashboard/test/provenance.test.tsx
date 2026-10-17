@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Functions } from '../src/Functions';
 import { Plans } from '../src/Plans';
@@ -48,5 +48,8 @@ it('code map says what to do when no code is mapped', async () => {
 it('code map lists mapped functions without a search', async () => {
   mockApi({ '/regions': [{ id: 'todo/cli.py::main::definition#0', path: 'todo/cli.py' }] });
   render(<Functions />);
-  await waitFor(() => expect(screen.getByText('todo/cli.py · main')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('cli.py')).toBeTruthy());
+  expect(screen.getByText('1 function')).toBeTruthy();
+  fireEvent.click(screen.getByText('cli.py'));
+  await waitFor(() => expect(screen.getByText('main')).toBeTruthy());
 });

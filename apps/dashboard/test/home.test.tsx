@@ -8,12 +8,12 @@ afterEach(cleanup);
 const routes = { '/ctx': { cwd: '/r' }, '/bench/compare': COMPARE, '/plans': [{ slug: 'p1', goal: 'G', tasks: 2 }], '/brief': { text: 'Hello team' }, '/teams': [] };
 
 describe('Home', () => {
-  it('renders proof numbers from /bench/compare and no "django"', async () => {
+  it('is just the hero: one action, no plan grid, no briefing, no corpus name', async () => {
     mockApi(routes);
     const { container } = render(<Home go={() => {}} />);
-    await waitFor(() => expect(screen.getByText(/Without Loom 12\/12 broke/)).toBeTruthy());
-    expect(screen.getByText(/With Loom 0\/12/)).toBeTruthy();
-    expect(screen.getByText(/Loom 6\/6 · blind 0\/6/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Plan with the Lead/)).toBeTruthy());
+    expect(screen.queryByText('Start a team from a plan')).toBeNull();
+    expect(screen.queryByText('Briefing')).toBeNull();
     expect(container.textContent!.toLowerCase()).not.toContain('django');
   });
 

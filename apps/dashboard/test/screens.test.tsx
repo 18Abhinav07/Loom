@@ -54,11 +54,12 @@ it('collisions shows an empty state', async () => {
 it('functions searches regions and shows the function story', async () => {
   const R = 'pkg/text.py::slugify::definition#0';
   mockApi({ ...ctx, [`/regions/${encodeURIComponent(R)}`]: { id: R, path: 'pkg/text.py', versions: [{ id: 'v1', by: 'a@t', task: null, decision: 'keep it pure', commit: 'abc1234', at: 1 }], collisions: [] },
-    '/regions?q=slug': [{ id: R, path: 'pkg/text.py' }] });
+    '/regions?q=::definition': [{ id: R, path: 'pkg/text.py' }] });
   render(<Functions />);
-  fireEvent.change(screen.getByLabelText('search functions'), { target: { value: 'slug' } });
-  await waitFor(() => expect(screen.getByText(R)).toBeTruthy());
-  fireEvent.click(screen.getByText(R));
+  await waitFor(() => expect(screen.getByText('text.py')).toBeTruthy());
+  fireEvent.click(screen.getByText('text.py'));
+  await waitFor(() => expect(screen.getByText('slugify')).toBeTruthy());
+  fireEvent.click(screen.getByText('slugify'));
   await waitFor(() => expect(screen.getByText(/keep it pure/)).toBeTruthy());
 });
 

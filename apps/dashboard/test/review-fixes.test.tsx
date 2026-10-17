@@ -24,10 +24,6 @@ it('a missing E5 result is shown as not run, not as 0/0', async () => {
   await waitFor(() => expect(screen.getByText(/Without Loom 12\/12/)).toBeTruthy());
   expect(b.container.textContent).not.toContain('0/0');
   expect(b.container.textContent).toMatch(/Real agents: not run/);
-  cleanup();
-  const h = render(<Home go={() => {}} />);
-  await waitFor(() => expect(screen.getByText(/Without Loom 12\/12/)).toBeTruthy());
-  expect(h.container.textContent).not.toContain('0/0');
 });
 
 it('a missing E1 result does not blank the app', async () => {
