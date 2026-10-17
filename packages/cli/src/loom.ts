@@ -442,7 +442,8 @@ export async function main(argv: string[]): Promise<number> {
   }
   if (cmd === 'ui') {
     const run = flag(rest, '--run') ?? resolveAttach(process.cwd())?.run;
-    const url = `${process.env.LOOM_UI ?? 'http://127.0.0.1:4317'}/${run ? `?run=${encodeURIComponent(run)}` : ''}`;
+    const q = new URLSearchParams({ cwd: process.cwd(), ...(run ? { run } : {}) });
+    const url = `${process.env.LOOM_UI ?? 'http://127.0.0.1:4317'}/?${q}`;
     console.log(url);
     if (!rest.includes('--no-open')) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
     return 0;
