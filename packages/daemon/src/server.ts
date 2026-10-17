@@ -22,7 +22,7 @@ import { renderWhy, why } from './why.js';
 import { filePatch, replay, type ReplayProgress } from './replay.js';
 import { resolveRepo } from './repo.js';
 import { LiveRoutes } from './live/routes.js';
-import { activeSession, finishSession, gitTry, lessonsFor, startSession } from '@loom/memory';
+import { activeSession, finishSession, gitTry, lessonsFor, sessionBriefing, startSession } from '@loom/memory';
 import { Bus } from './bus.js';
 import { Mirror } from './mirror.js';
 import { Channels } from './channels.js';
@@ -75,6 +75,13 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     return repo && a ? { claude, sid: a.sid, writer: a.writer, person: gitTry(repo.top, 'config', 'user.email') ?? 'unknown', repo: repo.top } : null;
   });
   const channels = new Channels(leadBus, mirror);
+  /** A channel registering after a daemon restart: find the session whose SessionStart recorded this claude pid, and bind it now. */
+  const rebind = async (cwd: string, pid: number) => {
+    const repo = cwd ? await resolveRepo(opts.db, cwd, opts.home) : null;
+    const a = repo ? activeSession(repo.top, null, [pid]) : null;
+    if (!a?.claude || !a.pids?.includes(pid)) return;
+    if (await mirror.get(cwd, a.claude)) channels.bind(a.claude, [pid]);
+  };
   const ppidsOf = (h: IncomingMessage['headers']) => String(h['x-loom-ppids'] ?? '').split(',').map(Number).filter((n) => n > 1);
   const recorder = new Recorder(opts.recordDir ?? join(homedir(), '.loom', 'runs'));
   const record = (run: string, route: string, b: unknown) => {
@@ -195,6 +202,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
           if (req.method === 'POST' && parts.length === 1) {
             if (!(Number(b.pid) > 1 && Number(b.port) > 0 && /^[0-9a-f]{32}$/.test(String(b.secret)))) return send(400, { error: 'need {pid, port, secret, cwd}' });
             channels.register({ pid: Number(b.pid), port: Number(b.port), secret: String(b.secret), cwd: String(b.cwd ?? '') });
+            await rebind(String(b.cwd ?? ''), Number(b.pid)).catch((e) => console.error(`[loom] channel rebind: ${String(e)}`));
             return send(200, { ok: true });
           }
           if (req.method === 'POST' && parts[1] === 'permission') {
@@ -258,8 +266,15 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
               if (parts[2] === 'SessionStart') {
                 const person = gitTry(repo.top, 'config', 'user.email') ?? 'unknown';
                 const writer = req.headers['x-loom-lead'] === '1' ? 'lead' : 'main';
-                const { sid, briefing } = await startSession(repo.graph, repo.top, { person, kind: 'interactive', claudeSid: input.session_id ?? null, pids: ppidsOf(req.headers), writer, surface: 'terminal' });
-                if (input.session_id) { mirror.start({ claude: input.session_id, sid, writer, person, repo: repo.top }); channels.bind(input.session_id, ppidsOf(req.headers)); }
+                // compact / clear / resume fire SessionStart again under the same Claude id: the Loom session continues
+                const prior = input.session_id && (input as any).source && (input as any).source !== 'startup' ? activeSession(repo.top, input.session_id) : null;
+                const { sid, briefing } = prior ? { sid: prior.sid, briefing: await sessionBriefing(repo.graph, repo.top, person, prior.writer) }
+                  : await startSession(repo.graph, repo.top, { person, kind: 'interactive', claudeSid: input.session_id ?? null, pids: ppidsOf(req.headers), writer, surface: 'terminal' });
+                if (prior && input.session_id && mirror.live.get(input.session_id)?.sid === sid) {
+                  channels.bind(input.session_id, ppidsOf(req.headers));
+                  return send(200, { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: briefing } });
+                }
+                if (input.session_id) { mirror.start({ claude: input.session_id, sid, writer: prior?.writer ?? writer, person, repo: repo.top }); channels.bind(input.session_id, ppidsOf(req.headers)); }
                 return send(200, { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: briefing } });
               }
               await finishSession(repo.graph, repo.top, { transcriptPath: (input as any).transcript_path, claudeSid: input.session_id ?? null });

@@ -114,3 +114,36 @@ test('GET /channels/:pid says whether the daemon knows a channel (loom-mcp re-re
   expect((await fetch(`${url}/channels/4242`, { headers: H() })).status).toBe(200);
   expect((await fetch(`${url}/channels/99999`, { headers: H() })).status).toBe(404);
 });
+
+// Final review I6: after a daemon restart an idle lead must be reachable as soon as its loom-mcp re-registers, not after its next hook.
+test('a restarted daemon recovers and binds an idle session when its channel re-registers', async () => {
+  const { r } = repo();
+  await hook('SessionStart', r, 'c-restart', {}, '888,5151,1');
+  const sid = activeSession(r, 'c-restart')!.sid;
+  const fresh = await startServer({ port: 0, db, uiPort: null, recordDir: tmpRecord(), home });   // the daemon after a restart
+  try {
+    const u2 = `http://127.0.0.1:${fresh.port}`;
+    const reg = await fetch(`${u2}/channels`, { method: 'POST', headers: H(), body: JSON.stringify({ pid: 5151, port: stubPort, secret: SECRET, cwd: r }) });
+    expect(reg.status).toBe(200);
+    const rows = await (await fetch(`${u2}/sessions`, { headers: H() })).json();
+    expect(rows.find((s: any) => s.sid === sid)).toMatchObject({ channel: true, busy: false });
+    const n = got.length;
+    const m = await fetch(`${u2}/sessions/${sid}/messages`, { method: 'POST', headers: H(), body: JSON.stringify({ text: 'after restart' }) });
+    expect(await m.json()).toMatchObject({ status: 'sent' });
+    expect(got.slice(n).map((g) => g.content)).toEqual(['after restart']);
+  } finally { await fresh.close(); }
+});
+
+// Final review I8: Claude Code fires SessionStart again (source compact/clear/resume) under the same session id.
+test('SessionStart with source compact keeps the Loom session: same sid, no second session file', async () => {
+  const { r } = repo();
+  await hook('SessionStart', r, 'c-compact', { source: 'startup' }, '889,5252,1');
+  const sid = activeSession(r, 'c-compact')!.sid;
+  const { readdirSync } = await import('node:fs');
+  const files = readdirSync(join(r, '.loom/sessions')).length;
+  expect((await hook('SessionStart', r, 'c-compact', { source: 'compact' }, '889,5252,1')).status).toBe(200);
+  expect(activeSession(r, 'c-compact')!.sid).toBe(sid);
+  expect(readdirSync(join(r, '.loom/sessions')).length).toBe(files);
+  const rows = await (await fetch(`${url}/sessions`, { headers: H() })).json();
+  expect(rows.filter((s: any) => s.claude === 'c-compact').map((s: any) => s.sid)).toEqual([sid]);
+});

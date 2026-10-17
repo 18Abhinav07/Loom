@@ -53,8 +53,13 @@ export async function startSession(g: LoomGraph, root: string, o: SessionOpts) {
     surface: o.surface ?? null, claude: o.claudeSid ?? null, parent: o.parent ?? null, team: o.team ?? null, plan: o.plan ?? null, task: o.task ?? null });
   appendEvent(root, sid, writer, { type: 'agent', name: writer, model: o.model ?? null });
   writeActive(root, { sid, writer, by: writer, task: o.task ?? null, claude: o.claudeSid ?? null, ...(o.pids?.length ? { pids: o.pids } : {}) }, o.claudeSid);
-  const { briefing } = await sync(g, root, { me: o.person, fetch: true, quiet: true });
-  return { sid, briefing: writer === 'lead' ? `${briefing ? `${briefing}\n\n` : ''}${leadBriefing(root)}` : briefing };
+  return { sid, briefing: await sessionBriefing(g, root, o.person, writer) };
+}
+
+/** What a session is told at its start, and again after Claude compacts it (it lost the first one). */
+export async function sessionBriefing(g: LoomGraph, root: string, person: string, writer: string): Promise<string> {
+  const { briefing } = await sync(g, root, { me: person, fetch: true, quiet: true });
+  return writer === 'lead' ? `${briefing ? `${briefing}\n\n` : ''}${leadBriefing(root)}` : briefing;
 }
 
 /** Last assistant text in a Claude Code transcript (jsonl); '' when unreadable. */
