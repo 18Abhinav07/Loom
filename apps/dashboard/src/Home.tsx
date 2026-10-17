@@ -30,7 +30,8 @@ export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
               : <span className="h5chip reveal"><span className="ldot" /><b>{repo === 'ready' ? 'Ready' : 'Checking'}</b> · {base(cwd) || 'this repo'}</span>}
             <h1 className="reveal" style={{ '--i': 1 } as never}>Run a team of coding agents on one repo. <em>Nothing breaks.</em></h1>
             <p className="reveal" style={{ '--i': 2 } as never}>Describe the work. The Lead splits it into tasks and starts one Claude agent per task. Loom makes them take turns on the same function, tells them when code they use changes, and only lets in work that still runs.</p>
-            <div className="row reveal" style={{ '--i': 3, gap: 14, alignItems: 'center', flexWrap: 'wrap', marginTop: 26 } as never}><button className="btn or" onClick={() => go('lead')}>Plan with the Lead →</button><span className="hint">or <code>loom lead</code> in the terminal</span><a className="hint" href="?view=bench" onClick={(e) => { e.preventDefault(); go('bench'); }}>See the benchmark →</a></div>
+            <div className="hcta reveal" style={{ '--i': 3 } as never}><button className="btn or lg" onClick={() => go('lead')}>Plan with the Lead →</button><button className="btn ghost lg" onClick={() => go('bench')}>See the benchmark</button></div>
+            <p className="hnote reveal" style={{ '--i': 4 } as never}>Prefer the terminal? Run <code>loom lead</code> in this repo.</p>
           </div>
 
           <div className="card h5stage reveal" style={{ '--i': 2 } as never}>
@@ -41,9 +42,9 @@ export function Home({ go, demo = false }: { go: Go; demo?: boolean }) {
                   <div className="h">{last.plan} · {last.state} {ago(last.startedAt)}</div>
                   <p className="dim" style={{ margin: '2px 0 12px' }}>{startedBy(last)}</p>
                   {last.agents.map((a) => (
-                    <div key={a.id} className="row" style={{ gap: 10, alignItems: 'center', marginBottom: 8 }}>
-                      <Bot color={agentColor(a.id)} size={34} /><b>{a.id}</b><span className="dim">{a.title}</span>
-                      <span className="sp" /><span className="chipr" title={a.lands.map(landText).join(' ')}>{a.lands.includes('landed') ? `landed${a.lands.length > 1 ? ` after ${a.lands.length - 1} sent back` : ''}` : (a.lands.at(-1) ?? a.state).replace(/_/g, ' ')}</span>
+                    <div key={a.id} className="lrow">
+                      <Bot color={agentColor(a.id)} size={34} /><span><b>{a.id}</b> <span className="dim">{a.title}</span></span>
+                      <span className="chipr" title={a.lands.map(landText).join(' ')}>{a.lands.includes('landed') ? `landed${a.lands.length > 1 ? ` after ${a.lands.length - 1} sent back` : ''}` : (a.lands.at(-1) ?? a.state).replace(/_/g, ' ')}</span>
                     </div>))}
                   {last.landed && <p style={{ margin: '12px 0 0' }}>Merge it: <code>git merge {last.landed}</code></p>}
                 </div>

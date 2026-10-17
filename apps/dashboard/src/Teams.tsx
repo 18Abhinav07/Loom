@@ -31,7 +31,7 @@ const nice = (q: string) => `${q.split(/[.:]/).pop() || q}()`;
 
 function layout(s: Snapshot, hot: Set<string>) {
   const byFile = new Map<string, Snapshot['nodes']>();
-  for (const n of s.nodes) byFile.set(n.file, [...(byFile.get(n.file) ?? []), n]);
+  for (const n of s.nodes) if (n.file) byFile.set(n.file, [...(byFile.get(n.file) ?? []), n]);
   const score = (f: string) => (byFile.get(f) ?? []).filter((n) => hot.has(n.id)).length;
   const files = [...byFile.keys()].sort((a, b) => score(b) - score(a) || a.localeCompare(b)).slice(0, 6);
   const cols = [{ x: 40, w: 300, y: 18 }, { x: 450, w: 320, y: 18 }];

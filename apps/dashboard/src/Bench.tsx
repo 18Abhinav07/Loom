@@ -27,7 +27,7 @@ const SECTIONS: [string, string, string][] = [
   ['E1', 'e1', 'Interference: blind vs oracle vs live'], ['E2', 'e2', 'Lease safety under contention'], ['E2', 'e2-control', 'Same load, leases off (control)'],
   ['E3', 'e3', 'Notice precision'], ['E4', 'e4-hooks', 'Hook latency'], ['E4', 'e4-indexer', 'Incremental index latency'],
 ];
-const PREREG = 'https://github.com/18Abhinav07/Loom/blob/main/bench/e5/PREREG.md';
+import PREREG from '../../../bench/e5/PREREG.md?raw';
 const label = (s: string) => s.replace(/^[a-z]\d+_/, '').replace(/_/g, ' ');
 
 function Bar({ n, of, tone, text }: { n: number; of: number; tone: 'bad' | 'good'; text: string }) {
@@ -52,16 +52,19 @@ export function Bench() {
   return (
     <div className="page bench">
       <h1>StaleBench</h1>
-      <p className="dim">Same task, same repo, same prompts; pre-registered. <a href={PREREG} target="_blank" rel="noreferrer">Read the pre-registration</a></p>
+      <p className="dim">Same task, same repo, same prompts; pre-registered. </p><details className="card sp" style={{ marginBottom: 16 }}><summary><b>Read the pre-registration</b></summary><pre style={{ whiteSpace: 'pre-wrap', fontSize: 12.5, marginTop: 10 }}>{PREREG}</pre></details><p className="dim" style={{ display: 'none' }}></p>
       {cmp && (
         <section className="card sp" style={{ marginBottom: 16 }}>
           <h3>E1 · Does a stale function break the other agent's work?</h3>
+          {e1 && <p style={{ fontFamily: 'var(--serif)', fontSize: 26, margin: '6px 0 12px' }}><span className="bad">{e1.blind.broke} of {e1.blind.n}</span> broke without Loom. <span className="good">{e1.loom.broke} of {e1.loom.n}</span> with it.</p>}
           {e1 ? <>
             <Bar n={e1.blind.broke} of={e1.blind.n} tone="bad" text={`Without Loom ${e1.blind.broke}/${e1.blind.n} broke`} />
             <Bar n={e1.loom.broke} of={e1.loom.n} tone="good" text={`With Loom ${e1.loom.broke}/${e1.loom.n}`} />
           </> : <p className="dim">E1 not run yet — <code>bench/regen.sh</code></p>}
           {pairs.length > 0 && (
-            <div className="pairs">{pairs.map((p) => (
+            <div className="pairs">
+              <div className="pair dim" style={{ border: 0, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}><b>Function</b><span>How it changed</span><span>Without Loom</span><span>With Loom</span></div>
+              {pairs.map((p) => (
               <div key={p.id} className="pair" title={p.change}>
                 <b>{p.func}</b><span className="dim">{p.mech}</span>
                 <span className={p.blind?.broke ? 'bad' : 'good'}>{p.blind?.broke ? 'broke' : 'ok'}</span>
