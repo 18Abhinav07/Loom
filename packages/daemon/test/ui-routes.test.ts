@@ -36,6 +36,11 @@ test('/lead cannot be framed by another site', async () => {
   expect(r.headers.get('content-security-policy')).toContain("frame-ancestors 'self'");
 });
 
+test('/lead prefills its message box from ?say=', async () => {
+  const html = await (await fetch(`http://127.0.0.1:${srv.uiPort}/lead?say=hi`)).text();
+  expect(html).toContain("get('say')");
+});
+
 test('a cross-site POST to /teams on the UI port is refused before it reaches the API', async () => {
   const r = await fetch(`http://127.0.0.1:${srv.uiPort}/teams`, { method: 'POST', headers: { origin: 'https://evil.example', 'content-type': 'application/json', 'x-loom-home': home }, body: JSON.stringify({ cwd: root, plan: 'x' }) });
   expect(r.status).toBe(403);

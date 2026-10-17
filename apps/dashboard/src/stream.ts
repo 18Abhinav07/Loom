@@ -55,7 +55,14 @@ export function reduce(st: RunState, e: LoomEvent): RunState {
   }
 }
 
-export const getJson = async <T,>(path: string): Promise<T> => { const r = await fetch(path); if (!r.ok) throw new Error(`${path}: ${r.status}`); return r.json(); };
+export const getJson = async <T,>(path: string): Promise<T> => {
+  const r = await fetch(path);
+  if (!r.ok) {
+    const e = await r.json().then((b: { error?: unknown }) => b?.error, () => undefined);
+    throw new Error(typeof e === 'string' ? e : `${path}: ${r.status}`);
+  }
+  return r.json();
+};
 export const fetchRuns = () => getJson<string[]>('/runs');
 export const fetchPlan = (run: string) => getJson<any>(`/plan?run=${encodeURIComponent(run)}`);
 
@@ -86,7 +93,7 @@ export function useRun(run: string | null): RunState {
 }
 
 /** A stable colour per agent id. */
-const PALETTE = ['#4f8cff', '#f59e0b', '#10b981', '#e879f9', '#22d3ee', '#f97316', '#a3e635', '#f43f5e'];
+const PALETTE = ['#D97757', '#5B8FC7', '#9B6BB5', '#4F8A43', '#C99619', '#2E9AA0', '#C4554D', '#7A6A5A'];
 export function agentColor(id: string): string {
   let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return PALETTE[h % PALETTE.length];

@@ -2,6 +2,7 @@
 // Cost and wall-clock columns are never shown: the claim is correctness, not speed or price.
 import { useEffect, useState } from 'react';
 import { api, type Compare } from './api';
+import { Empty } from './ui';
 import { getJson } from './stream';
 
 type J = Record<string, any>;
@@ -43,17 +44,17 @@ export function Bench() {
     getJson<Record<string, J>>('/bench').then(setB).catch((e) => setErr(String(e)));
     api<Compare>('/bench/compare').then(setCmp).catch(() => {});
   }, []);
-  if (err) return <p className="pad dim">{err}</p>;
-  if (!b) return <p className="pad dim">loading…</p>;
+  if (err) return <Empty>{err}</Empty>;
+  if (!b) return <p className="dim">loading…</p>;
   const pairs: J[] = b['e1-story']?.pairs ?? [];
   const e1 = cmp?.e1?.blind && cmp.e1.loom ? cmp.e1 : null;
   const tot = cmp?.e5?.length ? cmp.e5.reduce((a, s) => ({ l: a.l + s.loom.all_pass, b: a.b + s.blind.all_pass, n: a.n + s.loom.n }), { l: 0, b: 0, n: 0 }) : null;
   return (
-    <div className="scroll pad">
+    <div className="page bench">
       <h1>StaleBench</h1>
       <p className="dim">Same task, same repo, same prompts; pre-registered. <a href={PREREG} target="_blank" rel="noreferrer">Read the pre-registration</a></p>
       {cmp && (
-        <section className="card">
+        <section className="card sp" style={{ marginBottom: 16 }}>
           <h3>E1 · Does a stale function break the other agent's work?</h3>
           {e1 ? <>
             <Bar n={e1.blind.broke} of={e1.blind.n} tone="bad" text={`Without Loom ${e1.blind.broke}/${e1.blind.n} broke`} />
@@ -69,9 +70,9 @@ export function Bench() {
               <p className="dim">Each row: the function, how it changed, then without Loom, then with Loom.</p>
             </div>)}
         </section>)}
-      {cmp && !tot && <section className="card"><h3>E5 · Real agents on one repo</h3><p className="dim">Real agents: not run yet.</p></section>}
+      {cmp && !tot && <section className="card sp" style={{ marginBottom: 16 }}><h3>E5 · Real agents on one repo</h3><p className="dim">Real agents: not run yet.</p></section>}
       {cmp && tot && (
-        <section className="card">
+        <section className="card sp" style={{ marginBottom: 16 }}>
           <h3>E5 · Real agents on one repo</h3>
           <table className="grid"><thead><tr><th>Scenario</th><th>Without Loom passes</th><th>With Loom passes</th><th>Broken merged (without)</th><th>Merge conflicts (without)</th></tr></thead>
             <tbody>{cmp.e5.map((s) => (

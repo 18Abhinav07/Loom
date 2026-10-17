@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, couldNot } from './api';
+import { Empty, Problem } from './ui';
 
 interface Row { sid: string; person: string; kind: string; parent: string | null; team: string | null; task: string | null; started: number; turns: number; handoff?: string }
 interface Detail extends Omit<Row, 'turns'> { turns: { from: string; text: string; at: number }[]; versions: { region: string; commit: string }[]; children: string[] }
@@ -10,13 +11,13 @@ export function Sessions() {
   const [err, setErr] = useState('');
   const [open, setOpen] = useState<Detail | null>(null);
   useEffect(() => { api<Row[]>('/sessions').then(setRows).catch((e) => setErr(couldNot('sessions', e))); }, []);
-  if (err) return <p className="pad bad">{err}</p>;
-  if (!rows) return <p className="pad dim">loading…</p>;
-  if (!rows.length) return <p className="pad dim">No sessions recorded yet. They appear once Claude has worked in this repo with Loom on.</p>;
+  if (err) return <Problem msg={err} />;
+  if (!rows) return <p className="dim">loading…</p>;
+  if (!rows.length) return <Empty>No sessions recorded yet. They appear once Claude has worked in this repo with Loom on.</Empty>;
   return (
-    <div className="pad split2">
+    <div className="page two">
       <div>{rows.map((s) => (
-        <button key={s.sid} className={`srow ${open?.sid === s.sid ? 'on' : ''}`} onClick={() => api<Detail>(`/sessions/${s.sid}`).then(setOpen).catch(() => {})}>
+        <button key={s.sid} className={`listbtn ${open?.sid === s.sid ? 'on' : ''}`} onClick={() => api<Detail>(`/sessions/${s.sid}`).then(setOpen).catch(() => {})}>
           <b>{s.person}</b> <span className="dim">{s.kind}{s.team ? ` · team ${s.team}` : ''} · {s.turns} turns</span>
           {s.handoff && <div className="dim">{s.handoff}</div>}
         </button>))}</div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, couldNot } from './api';
+import { Empty, Problem } from './ui';
 import { GraphView } from './GraphView';
 import { agentColor } from './stream';
 
@@ -11,11 +12,11 @@ export function People() {
   const [people, setPeople] = useState<Person[] | null>(null);
   const [collab, setCollab] = useState<Collab>({ nodes: [], edges: [] });
   useEffect(() => { api<Person[]>('/people').then(setPeople).catch((e) => setErr(couldNot('people', e))); api<Collab>('/collab').then(setCollab).catch(() => {}); }, []);
-  if (err) return <p className="pad bad">{err}</p>;
-  if (!people) return <p className="pad dim">loading…</p>;
-  if (!people.length) return <p className="pad dim">No people yet. Everyone who works in this repo with Loom on shows up here.</p>;
+  if (err) return <Problem msg={err} />;
+  if (!people) return <p className="dim">loading…</p>;
+  if (!people.length) return <Empty>No people yet. Everyone who works in this repo with Loom on shows up here.</Empty>;
   return (
-    <div className="pad">
+    <div className="page">
       <table className="grid"><thead><tr><th>Person</th><th>Sessions</th><th>Agents</th><th>Functions touched</th></tr></thead>
         <tbody>{people.map((p) => <tr key={p.person}><td>{p.person}</td><td>{p.sessions}</td><td>{p.agents}</td><td>{p.regions}</td></tr>)}</tbody></table>
       <h3>Who works near whom</h3>

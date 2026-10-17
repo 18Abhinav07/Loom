@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, couldNot, post, type PlanRow } from './api';
+import { Empty, Problem } from './ui';
 
 interface Detail { slug: string; plan: { goal: string; tasks: { id: string; title: string; after: string[]; owns: string[] }[] } | null; problems: string[] }
 interface Checked { ok: boolean; problems: string[]; warnings: string[] }
@@ -16,13 +17,13 @@ export function Plans({ go }: { go: (v: string) => void }) {
     setD(null); setChk(null); setMsg('');
     if (sel) api<Detail>(`/plans/${encodeURIComponent(sel)}`).then(setD).catch((e) => setMsg(String(e.message ?? e)));
   }, [sel]);
-  if (err) return <p className="pad bad">{err}</p>;
-  if (!rows) return <p className="pad dim">loading…</p>;
-  if (!rows.length) return <p className="pad dim">No plans yet. Ask the lead to write one, or add <code>.loom/plans/&lt;name&gt;.md</code>.</p>;
+  if (err) return <Problem msg={err} />;
+  if (!rows) return <p className="dim">loading…</p>;
+  if (!rows.length) return <Empty>No plans yet. Ask the lead to write one, or add <code>.loom/plans/&lt;name&gt;.md</code>.</Empty>;
   const check = () => post<Checked>('/plans/check', { slug: sel }).then(setChk).catch((e) => setMsg(e.message));
   const start = () => post('/teams', { plan: sel }).then(() => go('teams')).catch((e) => setMsg(e.message));
   return (
-    <div className="pad plans">
+    <div className="page">
       <div className="row">
         <select value={sel} onChange={(e) => setSel(e.target.value)} aria-label="plan">{rows.map((r) => <option key={r.slug} value={r.slug}>{r.slug} · {r.tasks} tasks</option>)}</select>
         <button onClick={check}>Check</button><button disabled={chk?.ok === false} onClick={start}>Start team</button>

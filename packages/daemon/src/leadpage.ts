@@ -29,6 +29,7 @@ const T = ${JSON.stringify(token)};
 const api = (p, o = {}) => fetch('/lead/api' + p, { ...o, headers: { 'x-loom-token': T, 'content-type': 'application/json' } });
 const $ = (id) => document.getElementById(id);
 let cur = null, rows = [];
+$('text').value = new URLSearchParams(location.search).get('say') ?? '';
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 function turn(t) { const e = el('div', 't ' + t.from, t.text); $('turns').append(e); e.scrollIntoView({ block: 'end' }); }
 function tool(t) { $('turns').append(el('div', 'tool', (t.ok === false ? '✗ ' : '· ') + t.name + (t.target ? ' ' + t.target : ''))); }

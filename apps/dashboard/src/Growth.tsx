@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, couldNot } from './api';
+import { Empty, Problem } from './ui';
 import { agentColor } from './stream';
 
 interface Cell { bucket: string; person: string; added: number; changed: number; removed: number }
@@ -10,15 +11,15 @@ export function Growth() {
   const [err, setErr] = useState('');
   const [rows, setRows] = useState<Cell[] | null>(null);
   useEffect(() => { api<Cell[]>('/growth').then(setRows).catch((e) => setErr(couldNot('history', e))); }, []);
-  if (err) return <p className="pad bad">{err}</p>;
-  if (!rows) return <p className="pad dim">loading…</p>;
-  if (!rows.length) return <p className="pad dim">No history yet. Growth appears as commits land.</p>;
+  if (err) return <Problem msg={err} />;
+  if (!rows) return <p className="dim">loading…</p>;
+  if (!rows.length) return <Empty>No history yet. Growth appears as commits land.</Empty>;
   const buckets = [...new Set(rows.map((r) => r.bucket))];
   const size = (r: Cell) => r.added + r.changed + r.removed;
   const max = Math.max(...buckets.map((b) => rows.filter((r) => r.bucket === b).reduce((n, r) => n + size(r), 0)), 1);
   const people = [...new Set(rows.map((r) => r.person))];
   return (
-    <div className="pad">
+    <div className="page">
       <svg width={buckets.length * (W + GAP) + GAP} height={H + 30} role="img" aria-label="growth by person" style={{ maxWidth: '100%' }}>
         {buckets.map((b, i) => {
           let y = H;

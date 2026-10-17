@@ -10,12 +10,12 @@ export function Functions() {
   const [story, setStory] = useState<Story | null>(null);
   useEffect(() => { if (!q.trim()) return setHits([]); api<Hit[]>(`/regions?q=${encodeURIComponent(q.trim())}`).then(setHits).catch(() => setHits([])); }, [q]);
   return (
-    <div className="pad">
+    <div className="page">
       <input aria-label="search functions" placeholder="Search a function or file" value={q} onChange={(e) => setQ(e.target.value)} className="search" />
-      <div className="split2">
+      <div className="two">
         <div>
           {!q.trim() ? <p className="dim">Type a function or file name to see its story.</p> : !hits.length ? <p className="dim">No function matches.</p>
-            : hits.map((h) => <button key={h.id} className="srow" onClick={() => api<Story>(`/regions/${encodeURIComponent(h.id)}`).then(setStory).catch(() => {})}>{h.id}</button>)}
+            : hits.map((h) => <button key={h.id} className="listbtn" onClick={() => api<Story>(`/regions/${encodeURIComponent(h.id)}`).then(setStory).catch(() => {})}>{h.id}</button>)}
         </div>
         <div>{story && (
           <>

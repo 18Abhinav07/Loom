@@ -8,7 +8,8 @@ export function mockApi(routes: Record<string, unknown | ((init?: RequestInit) =
     const key = Object.keys(routes).find((k) => String(url).includes(k));
     const v = key === undefined ? undefined : routes[key];
     const body = typeof v === 'function' ? (v as (i?: RequestInit) => unknown)(init) : v;
-    return { ok: key !== undefined, status: key !== undefined ? 200 : 404, json: async () => body ?? {} };
+    const refused = body && typeof body === 'object' && '__status' in (body as object) ? (body as { __status: number }).__status : 0;
+    return { ok: key !== undefined && !refused, status: refused || (key !== undefined ? 200 : 404), json: async () => body ?? {} };
   }));
   return calls;
 }
