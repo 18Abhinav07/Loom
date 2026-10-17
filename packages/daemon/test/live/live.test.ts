@@ -204,6 +204,33 @@ test('handover on a pending sync: syncIfPending merges the landed branch into th
   expect(await live.syncIfPending('q')).toBeNull();
 });
 
+test('stale_version: the deny writes one rejected record naming the other person, once', async () => {
+  const st: Stale = { region: F, version: 'v9', by: 'Q@t', task: 'T-7', decision: null, summary: 'f changed on up by Q@t', person: 'Q@t', session: 'SQ' };
+  live = new Live(g, { now, stale: async (_g, _t, ids) => (ids.includes(F) ? [st] : []) });
+  const got: any[] = [];
+  live.onCollision = (c) => got.push(c);
+  await live.register(agent('i', 'P6', { upstream: 'up' }));
+  expect((await body('i', 'return x', 'return x + 1')).allow).toBe(false);
+  expect(got).toHaveLength(1);
+  expect(got[0]).toMatchObject({ kind: 'stale_version', region: [F], outcome: 'rejected', version: 'v9' });
+  expect(got[0].parties.map((p: any) => p.person)).toEqual(['P6', 'Q@t']);
+  expect(got[0].detail).toContain('Q@t');
+});
+
+test('merge_conflict: a sync that leaves markers writes one record per conflicted region', async () => {
+  const wt = mkdtempSync(join(tmpdir(), 'loom-live-wt-'));
+  sh(root, 'worktree', 'add', '-q', '-b', 'agent-c', join(wt, 'c'));
+  await live.register(agent('c1', 'P8', { worktree: join(wt, 'c'), upstream: 'main' }));
+  const got: any[] = [];
+  live.onCollision = (c) => got.push(c);
+  writeFileSync(join(wt, 'c', 'a.py'), A_PY.replace('return 0', 'return 1')); sh(join(wt, 'c'), 'commit', '-qam', 'mine');
+  put('a.py', read('a.py').replace('return 0', 'return 7')); sh(root, 'commit', '-qam', 'landed');
+  await g.query("MATCH (a:Agent {id: 'c1'}) SET a.syncPending = true");
+  expect((await live.syncIfPending('c1'))?.status).toBe('conflict');
+  expect(got).toHaveLength(1);
+  expect(got[0]).toMatchObject({ kind: 'merge_conflict', outcome: 'open', region: [K] });
+});
+
 // Live coordination A–C: calls written while agents work are graph edges at once, so a signature change and a new call
 // to it find each other in whichever order they happen; the function an agent creates is its own leased region.
 const U = 'a.py::u::definition#0';

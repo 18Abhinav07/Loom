@@ -105,6 +105,8 @@ export class Live {
     if (a.upstream) {
       const st = await this.stale(this.g, a.top, ids, { upstream: a.upstream, me: { person: a.person, agent, run: !!a.run } });
       if (st.length) {
+        for (const s of st) this.onCollision?.({ kind: 'stale_version', region: [s.region], parties: [{ person: a.person, session: agent, agent }, { person: s.person ?? s.by, session: s.session ?? s.by, agent: null }],
+          outcome: 'rejected', version: s.version, detail: `${agent} was denied: ${s.summary}` });
         if (a.run) {
           // a run's agent cannot pull by itself: Loom merges the landed work in, then denies once so it re-reads
           for (const s of st) await ackStale(this.g, agent, s.region, s.version);
@@ -427,6 +429,8 @@ export class Live {
     const h = await handover(a.worktree, a.upstream);
     await this.g.query('MATCH (a:Agent {id: $id}) SET a.syncPending = false', { id: a.id });
     if (h.status === 'conflict') {
+      for (const r of h.regions) this.onCollision?.({ kind: 'merge_conflict', region: [r], parties: [{ person: a.person, session: a.id, agent: a.id }], outcome: 'open',
+        detail: `syncing ${a.upstream} into ${a.id} left a conflict in ${r}` });
       await this.g.query(`CREATE (:Notice {id: $nid, agent: $id, author: 'loom', kind: 'conflict', regions: $regions, score: 1.0, status: 'pending', at: $now})`,
         { nid: ulid(this.now()), id: a.id, regions: JSON.stringify(h.regions), now: this.now() });
     }

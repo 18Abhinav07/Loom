@@ -2,7 +2,7 @@
 import type { LoomGraph } from '@loom/core';
 import { currentVersion, history, isAncestor, upstreamRef } from '@loom/memory';
 
-export interface Stale { region: string; version: string; by: string; task: string | null; decision: string | null; summary: string }
+export interface Stale { region: string; version: string; by: string; task: string | null; decision: string | null; summary: string; person?: string; session?: string }
 export interface StaleOpts { upstream: string; me: { person: string; agent: string; run: boolean } }
 
 /** Ruling 5: a run's agents compare against the run's landed branch; otherwise @{upstream} → origin/<default> → none. */
@@ -25,7 +25,7 @@ export async function staleRegions(g: LoomGraph, top: string, ids: string[], o: 
     if (k?.n) continue;
     const decision = row.decisions[0] ?? null;
     const qname = region.split('::')[1] ?? region;
-    out.push({ region, version: v, by, task: row.task, decision,
+    out.push({ region, version: v, by, task: row.task, decision, person: row.person ?? undefined, session: (row.by ?? '').split('/')[0] || undefined,
       summary: `${qname} changed on ${o.upstream} by ${by}${row.task ? ` (task ${row.task})` : ''}${decision ? `: ${decision}` : ''}` });
   }
   return out;

@@ -25,7 +25,7 @@ import { LiveRoutes } from './live/routes.js';
 import { activeSession, finishSession, gitTry, lessonsFor, sessionBriefing, startSession } from '@loom/memory';
 import { Bus } from './bus.js';
 import { TeamRoutes, TEAM_TOOLS } from './team/routes.js';
-import { TeamRoutes, TEAM_TOOLS } from './team/routes.js';
+import { benchCompare, brief, collab, collisions, growth, people, region, sessionDetail, sessions as sessionRows } from './views.js';
 import { Mirror } from './mirror.js';
 import { Channels } from './channels.js';
 import { authorized, machineToken } from './token.js';
@@ -189,6 +189,8 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       const u = new URL(req.url ?? '/', 'http://x');
       const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
       if (req.method === 'GET' && u.pathname === '/health') return send(200, { ok: true, runs: runs.size, readOnly: Boolean(opts.readOnly), pid: process.pid });
+      const view = await viewRoute(u, parts, req);
+      if (view) return send(view.status, view.body);
       if (parts[0] === 'events' || parts[0] === 'sessions' || parts[0] === 'channels') {   // B3: the lead/session surface; machine token required
         if (!authorized(req, token)) return send(401, { error: 'token required: x-loom-token or ?token= (see ~/.loom/token)' });
         if (req.method === 'GET' && parts[0] === 'events' && parts.length === 1) {
@@ -517,6 +519,32 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     }));
   }
 
+  /** B5/B6 data views (GET, ?cwd=). `sessions` answers from the graph only when asked about a repo; without one it is the lead's live list. */
+  async function viewRoute(u: URL, parts: string[], req: IncomingMessage): Promise<{ status: number; body: unknown } | undefined> {
+    if (req.method !== 'GET') return undefined;
+    const ok = (body: unknown) => ({ status: 200, body });
+    if (parts[0] === 'bench' && parts[1] === 'compare' && parts.length === 2) return ok(benchCompare(opts.benchDir ?? BENCH));
+    const cwd = String(u.searchParams.get('cwd') ?? req.headers['x-loom-cwd'] ?? '');
+    const names = ['people', 'collab', 'collisions', 'regions', 'growth', 'brief'];
+    if (!(names.includes(parts[0]) || (parts[0] === 'sessions' && cwd))) return undefined;
+    const repo = await resolveRepo(opts.db, cwd, req.headers['x-loom-home'] as string | undefined);
+    if (!repo) return { status: 404, body: { error: 'not a Loom repo (run loom init)' } };
+    const g = repo.graph; const q = (k: string) => u.searchParams.get(k);
+    switch (parts[0]) {
+      case 'people': return ok(await people(g));
+      case 'collab': return ok(await collab(g));
+      case 'collisions': return ok(await collisions(g, { kind: q('kind'), person: q('person') }));
+      case 'growth': return ok(await growth(g));
+      case 'brief': return ok(await brief(g, repo.root, q('person')));
+      case 'regions': { const r = parts[1] ? await region(g, parts[1]) : null; return r ? ok(r) : { status: 404, body: { error: 'no such region' } }; }
+      default: {
+        if (parts.length === 1) return ok(await sessionRows(g, { person: q('person'), limit: q('limit') ? Number(q('limit')) : undefined }));
+        const d = await sessionDetail(g, parts[1]);
+        return d ? ok(d) : { status: 404, body: { error: `no session ${parts[1]}` } };
+      }
+    }
+  }
+
   const benchRun = new BenchRun(opts.benchRoot ?? resolve(BENCH, '..'), opts.benchRunner);
 
   /** Read-only (public) mode answers only for the runs this daemon serves: a query on any other name would read, or create, that graph. */
@@ -571,6 +599,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       if (u.pathname === '/claims') return { claims: await (runs.get(run)?.claims() ?? []) };
       if (u.pathname === '/lessons') return { lessons: run ? await lessonsOf(run).list(u.searchParams.get('symbol') ?? undefined) : [] };
       if (u.pathname === '/bench') return bench();
+      { const v = await viewRoute(u, u.pathname.split('/').filter(Boolean).map(decodeURIComponent), req); if (v) return new Reply(v.status, v.body); }
       if (u.pathname !== '/plan') return undefined;
       const c = runs.get(run);
       const plan = c?.plan ?? { tasks: [], hubs: [], hubOwner: {} };
