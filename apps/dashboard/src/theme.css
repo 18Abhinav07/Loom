@@ -1,4 +1,4 @@
-:root { --bg: #0b0f17; --panel: #111827; --line: #1f2937; --fg: #e5e7eb; --dim: #9ca3af; --accent: #fde047; }
+:root { --bg: #0b0f17; --panel: #111827; --line: #1f2937; --fg: #e5e7eb; --dim: #9ca3af; --accent: #fde047; --bad: #f87171; --good: #34d399; }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--fg); font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif; }
@@ -101,3 +101,18 @@ button:disabled { opacity: .5; }
 .sw.ring { border: 2px solid var(--fg); background: transparent; }
 button.mini { font-size: 10px; padding: 0 6px; margin-left: 6px; text-transform: none; letter-spacing: 0; }
 .events.plain { font-family: inherit; font-size: 12.5px; }
+
+/* app shell */
+.app.rail { display: grid; grid-template-columns: 180px 1fr; min-height: 100vh }
+.rail nav.side { display: flex; flex-direction: column; gap: 2px; padding: 14px 8px; border-right: 1px solid var(--line); background: var(--panel) }
+.rail nav.side button { text-align: left }
+.rail main { min-width: 0; overflow-x: hidden }
+@media (max-width: 720px) { .app.rail { grid-template-columns: 1fr } .rail nav.side { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line) } }
+.pad { padding: 16px }
+.hero h1 { font-size: clamp(22px, 4vw, 34px); margin: 8px 0 }
+.steps, .start { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px }
+.step, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px }
+.proof { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin: 16px 0; cursor: pointer }
+.stat { font-size: 18px; font-weight: 600 } .stat.bad, p.bad { color: var(--bad) } .stat.good { color: var(--good) }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.brief { white-space: pre-wrap; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px }

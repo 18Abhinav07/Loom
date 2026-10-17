@@ -53,7 +53,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   /** Spec §4.4 deployed mode: every write route refuses except /replay of a recording under `replayRoots`. */
   readOnly?: boolean; tenant?: string; replayRoots?: string[]; host?: string;
   /** Story's launcher and showcase: the bench dir it runs E1 in, how it spawns, the recording "Watch 3 real agents" replays. */
-  benchRoot?: string; benchRunner?: BenchRunner; demoRun?: string;
+  benchRoot?: string; benchRunner?: BenchRunner; demoRun?: string; cwd?: string;
   /** The Loom home holding `token` (B3); tests pass a tmp dir. Default LOOM_HOME, else ~/.loom. */
   home?: string;
   /** Teams' agent binary and poll interval (tests pass the fake claude). */
@@ -592,6 +592,13 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       if (u.pathname === '/demo/replay' && req.method === 'POST') {   // the API port's /replay, fixed to the shipped recording
         const r = await fetch(`http://127.0.0.1:${port}/replay`, { method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ dir: opts.demoRun ?? join(DEMO, 'run-1'), rel: 'demo/run-1' }) });
+        return new Reply(r.status, await r.json());
+      }
+      if (u.pathname === '/ctx') return { cwd: opts.cwd ?? process.cwd() };   // the repo the dashboard opens on when the page names none
+      if (!opts.readOnly && (u.pathname === '/teams' || u.pathname.startsWith('/teams/') || u.pathname === '/plans' || u.pathname.startsWith('/plans/'))) {
+        const init: RequestInit = { method: req.method, headers: { 'content-type': 'application/json', ...(req.headers['x-loom-home'] ? { 'x-loom-home': String(req.headers['x-loom-home']) } : {}) } };
+        if (req.method === 'POST') init.body = JSON.stringify(await body(req));
+        const r = await fetch(`http://127.0.0.1:${port}${u.pathname}${u.search}`, init);   // the dashboard is a client of the API port, never a second implementation
         return new Reply(r.status, await r.json());
       }
       if (u.pathname === '/timeline') return timeline(run);
