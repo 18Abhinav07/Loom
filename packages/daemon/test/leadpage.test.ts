@@ -3,6 +3,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { request } from 'node:http';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { LoomDb } from '@loom/core';
 import { startServer } from '../src/server.js';
@@ -55,4 +56,38 @@ test('a read-only (deployed) daemon does not serve the lead page or the pass-thr
   const u = `http://127.0.0.1:${ro.uiPort}`;
   expect((await fetch(`${u}/lead`)).status).toBe(404);
   expect((await fetch(`${u}/lead/api/sessions`, { headers: { 'x-loom-token': token } })).status).toBe(404);
+});
+
+// Final review C1: DNS rebinding. A page on evil.example whose name now resolves to 127.0.0.1 sends Host: evil.example:<port>.
+function raw(port: number, path: string, headers: Record<string, string>, method = 'GET'): Promise<{ status: number; body: string }> {
+  return new Promise((ok, bad) => {
+    const r = request({ host: '127.0.0.1', port, path, method, headers }, (res) => {
+      let b = ''; res.on('data', (c) => { b += c; }); res.on('end', () => ok({ status: res.statusCode ?? 0, body: b }));
+    });
+    r.on('error', bad); r.end();
+  });
+}
+
+test('a rebinding Host gets no token from /lead and no API on either port', async () => {
+  const page = await raw(srv.uiPort!, '/lead', { host: `evil.example:${srv.uiPort}` });
+  expect(page.status).toBe(403);
+  expect(page.body).not.toContain(token);
+  expect((await raw(srv.uiPort!, '/lead/api/sessions', { host: `evil.example:${srv.uiPort}`, 'x-loom-token': token })).status).toBe(403);
+  expect((await raw(srv.port, '/sessions', { host: `evil.example:${srv.port}`, 'x-loom-token': token })).status).toBe(403);
+  for (const h of [`localhost:${srv.uiPort}`, `127.0.0.1:${srv.uiPort}`, `[::1]:${srv.uiPort}`]) expect((await raw(srv.uiPort!, '/lead', { host: h })).status).toBe(200);
+});
+
+test('a write from another web origin is refused even with the token; same-origin and no-origin writes pass', async () => {
+  const post = (origin?: string) => raw(srv.uiPort!, '/lead/api/sessions/nope/messages',
+    { host: `127.0.0.1:${srv.uiPort}`, 'x-loom-token': token, 'content-type': 'application/json', ...(origin ? { origin } : {}) }, 'POST');
+  expect((await post('https://evil.example')).status).toBe(403);
+  expect((await post('null')).status).toBe(403);
+  expect((await post(`http://localhost:${srv.uiPort}`)).status).toBe(404);   // reaches the route: no such session
+  expect((await post()).status).toBe(404);
+});
+
+test('the pass-through reaches only the lead routes, not hooks, admin or plans', async () => {
+  const h = { 'x-loom-token': token, 'content-type': 'application/json' };
+  for (const p of ['/hook/claude/PreToolUse', '/admin/v2/runs', '/plans/check', '/health'])
+    expect((await fetch(`${ui}/lead/api${p}`, { method: 'POST', headers: h, body: '{}' })).status).toBe(404);
 });
