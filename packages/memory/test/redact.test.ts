@@ -43,3 +43,36 @@ test('envValues reads .env* values of 8+ chars, quotes stripped', async () => {
   const { envValues } = await import('../src/redact.js');
   expect(envValues(d).sort()).toEqual(['abcdefgh1234', 'postgres://u:p@h/db', 'zzzzzzzzzz']);
 });
+
+// Final review I3: secrets that still reached committed .loom/sessions.
+test('redact also covers AWS secrets and session ids, GitHub fine-grained PATs, Stripe live keys and Google API keys', () => {
+  expect(redact('id ASIAABCDEFGHIJKLMNOP x')).toBe('id [redacted] x');
+  expect(redact('aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY ok')).toBe('[redacted] ok');
+  expect(redact('AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"')).not.toMatch(/wJalr/);
+  expect(redact('pat github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz end')).toBe('pat [redacted] end');
+  expect(redact('stripe sk_live_abcdefghijklmnop1234 and rk_live_abcdefghijklmnop1234')).toBe('stripe [redacted] and [redacted]');
+  expect(redact('g AIzaSyA-abcdefghijklmnopqrstuvwxyz01234 .')).toBe('g [redacted] .');
+  expect(redact('a commit 3f2a9c1e0b7d4a5c6e8f9a0b1c2d3e4f5a6b7c8d stays')).toBe('a commit 3f2a9c1e0b7d4a5c6e8f9a0b1c2d3e4f5a6b7c8d stays');
+});
+
+test('envValues reads nested .env files (apps/api/.env) but not node_modules or .git', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const d = mkdtempSync(join(tmpdir(), 'loom-env-'));
+  mkdirSync(join(d, 'apps/api'), { recursive: true }); writeFileSync(join(d, 'apps/api/.env'), 'SECRET=nestedsecret99\n');
+  mkdirSync(join(d, 'node_modules/x'), { recursive: true }); writeFileSync(join(d, 'node_modules/x/.env'), 'X=fromdependency1\n');
+  const { envValues } = await import('../src/redact.js');
+  expect(envValues(d)).toEqual(['nestedsecret99']);
+});
+
+test('every string an event carries is redacted on its way to .loom/sessions, with .env read fresh after it changes', async () => {
+  const { mkdtempSync, readFileSync, writeFileSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const { appendEvent, sessionFile } = await import('../src/events.js');
+  const d = mkdtempSync(join(tmpdir(), 'loom-ev-'));
+  appendEvent(d, 'S1', 'lead', { type: 'handoff', summary: 'I put sk-ant-api03-abcdefghijklmnop in config', open_tasks: [], open_leases: [] });
+  appendEvent(d, 'S1', 'lead', { type: 'tool', name: 'Grep', target: 'ghp_abcdefghijklmnopqrstuvwxyz0123', ok: true, ms: 1 });
+  writeFileSync(join(d, '.env'), 'DB_PASS=createdlater123\n');   // a .env created after the first write
+  appendEvent(d, 'S1', 'lead', { type: 'turn', from: 'user', text: 'the pass is createdlater123' });
+  const out = readFileSync(join(d, sessionFile(d, 'S1', 'lead')), 'utf8');
+  for (const s of ['sk-ant-api03', 'ghp_abc', 'createdlater123']) expect(out).not.toContain(s);
+  expect(out.match(/\[redacted\]/g)?.length).toBe(3);
+});

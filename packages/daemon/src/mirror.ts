@@ -18,7 +18,6 @@ const CHANNEL = /^<channel source="loom"[^>]*>\n?([\s\S]*?)\n?<\/channel>\s*$/;
 /** §3.2: UserPromptSubmit → turn(user|dashboard), PostToolUse → tool, Stop → turn(claude). Written to the session file and the bus. */
 export class Mirror {
   readonly live = new Map<string, Live>();
-  private env = new Map<string, string[]>();
   constructor(private bus: Bus, private recover: Recover) {}
 
   start(s: Omit<Live, 'busy' | 'channel' | 'last' | 'tools' | 'started'>) {
@@ -40,7 +39,7 @@ export class Mirror {
     return r ? this.start(r) : undefined;
   }
 
-  private envOf(repo: string) { if (!this.env.has(repo)) this.env.set(repo, envValues(repo)); return this.env.get(repo)!; }
+  private envOf(repo: string) { return envValues(repo); }   // re-reads a .env only when it changed
   private write(l: Live, ev: Record<string, unknown> & { type: any }) {
     appendEvent(l.repo, l.sid, l.writer, ev); l.last = Date.now();
   }
@@ -65,7 +64,7 @@ export class Mirror {
       const ti = input.tool_input ?? {}; const resp = input.tool_response;
       const file = ti.file_path ?? ti.notebook_path ?? ti.path;
       const target = typeof file === 'string' ? (isAbsolute(file) ? relative(real(l.repo), real(file)) || file : file)
-        : typeof ti.command === 'string' ? redact(ti.command, env).slice(0, 200) : typeof ti.pattern === 'string' ? ti.pattern.slice(0, 200) : null;
+        : typeof ti.command === 'string' ? redact(ti.command, env).slice(0, 200) : typeof ti.pattern === 'string' ? redact(ti.pattern, env).slice(0, 200) : null;
       const ok = !(resp && typeof resp === 'object' && (resp.is_error === true || resp.success === false || (typeof resp.error === 'string' && resp.error)));
       const ms = typeof input.duration_ms === 'number' ? input.duration_ms : null;
       l.tools[name] = (l.tools[name] ?? 0) + 1;

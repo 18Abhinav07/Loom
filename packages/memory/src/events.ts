@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ulid } from './ids.js';
+import { envValues, redactDeep } from './redact.js';
 
 export const EVENT_TYPES = ['session', 'agent', 'task', 'version', 'decision', 'evidence', 'lesson', 'message', 'handoff',
   'turn', 'tool', 'plan', 'team', 'collision'] as const;
@@ -25,7 +26,8 @@ export function collisionId(kind: string, parties: Party[], region: string[], ve
 /** One line per event; the file has exactly one writer (§5), so appends never interleave. */
 export function appendEvent(root: string, sid: string, writer: string,
   ev: { type: EventType; id?: string; at?: number } & Record<string, unknown>): LoomEvent {
-  const e = { v: 1, ...ev, id: ev.id ?? ulid(), at: ev.at ?? Date.now() } as LoomEvent;
+  const { type, id, at, ...rest } = ev;   // §4.4: nothing secret is ever written, whoever builds the event
+  const e = { v: 1, type, ...redactDeep(rest, envValues(root)), id: id ?? ulid(), at: at ?? Date.now() } as LoomEvent;
   const p = join(root, sessionFile(root, sid, writer));
   mkdirSync(dirname(p), { recursive: true });
   appendFileSync(p, JSON.stringify(e) + '\n');
