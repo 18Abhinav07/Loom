@@ -9,8 +9,8 @@ interface Story { id: string; path: string; versions: { id: string; by: string |
 interface Fn { id: string; name: string }
 
 const dirOf = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : './');
-const fileOf = (p: string) => p.split('/').pop() ?? p;
-const fnName = (id: string) => id.split('::')[1] ?? id;
+const fileOf = (p: string) => (p ?? '').split('/').pop() ?? p;
+const fnName = (id: string) => (id ?? '').split('::')[1] ?? id;
 
 /** The repo as tiles: one per file, grouped by folder, sized by how many functions it holds. Open a file to see its functions. */
 interface Snap { nodes: { id: string; file: string; qname: string; kind: string }[] }

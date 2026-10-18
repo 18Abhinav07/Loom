@@ -169,7 +169,7 @@ export class LiveRoutes {
     const leases = await r.g.query<{ agent: string; symbol: string; mode: string; expires: number }>(
       `MATCH (a:Agent)-[l:LEASED]->(x:Region) WHERE l.expires > $now RETURN a.id AS agent, x.id AS symbol, l.mode AS mode, l.expires AS expires`, { now });
     const waits = await r.g.query<{ agent: string; symbol: string }>('MATCH (a:Agent)-[:WAITS_ON]->(x:Region) RETURN DISTINCT a.id AS agent, x.id AS symbol');
-    const changed = (await r.g.query<{ region: string }>('MATCH (c:Change) RETURN DISTINCT c.region AS region')).map((c) => c.region);
+    const changed = (await r.g.query<{ region: string }>('MATCH (c:Change) RETURN DISTINCT c.region AS region')).map((c) => c.region).filter((x): x is string => !!x);
     const ids = [...new Set([...leases.map((l) => l.symbol), ...waits.map((w) => w.symbol), ...changed])];
     const nodes = ids.length ? await r.g.query<{ id: string; qname: string; file: string; kind: string }>(
       `MATCH (s:Region) WHERE s.id IN $ids OPTIONAL MATCH (s)-[:CALLS]-(n:Region)

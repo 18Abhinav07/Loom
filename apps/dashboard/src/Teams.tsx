@@ -27,7 +27,7 @@ const KC: Record<string, string> = { lock: 'var(--accent)', wait: 'var(--wait)',
 // ---- the floor: files as boxes, functions as rows, agents sitting on what they hold -----------------------------------------
 interface Reg { id: string; n: string; x: number; y: number; w: number; h: number; file: string }
 interface FileBox { name: string; x: number; y: number; w: number; h: number }
-const nice = (q: string) => `${q.split(/[.:]/).pop() || q}()`;
+const nice = (q?: string | null) => `${(q ?? '').split(/[.:]/).pop() || q || 'a function'}()`;
 
 function layout(s: Snapshot, hot: Set<string>) {
   const byFile = new Map<string, Snapshot['nodes']>();
