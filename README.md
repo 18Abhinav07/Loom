@@ -16,6 +16,8 @@ git clone https://github.com/18Abhinav07/Loom.git && cd Loom
 
 This puts a `loom` command on your PATH.
 
+**One command:** after cloning, `./scripts/demo.sh` checks your machine, installs Loom, asks what to run (live Django demo, or StaleBench 12 / 36 / 108), opens the dashboard and starts it. `./scripts/demo.sh live|12|36|108` skips the menu; `MODEL=sonnet` changes the model. The steps below are what it does.
+
 **1. Run the StaleBench demo on Django (the hackathon demo)**
 
 ```bash

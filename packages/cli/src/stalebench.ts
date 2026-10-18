@@ -60,7 +60,8 @@ export async function stalebenchCmd(rest: string[]): Promise<number> {
   console.log('ok  docker');
   if (rest.includes('--check')) { console.log(`\nready. a real run would cost ${runs} Claude sessions. start it with: loom stalebench --pairs ${pairs}${oracle ? ' --oracle' : ''}`); return 0; }
 
-  if (!rest.includes('--yes') && process.stdin.isTTY) {
+  if (!rest.includes('--yes') && !process.stdin.isTTY) { console.error('this spends tokens; rerun with --yes to confirm'); return 1; }
+  if (!rest.includes('--yes')) {
     process.stdout.write(`This spends tokens: ${runs} Claude ${model} sessions. Type yes to start: `);
     const ans = await new Promise<string>((r) => process.stdin.once('data', (d) => r(String(d).trim())));
     if (ans !== 'yes') { console.log('cancelled'); return 1; }
