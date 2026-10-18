@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Compare, type Team } from './api';
 import { LiveVsLoom } from './Score';
+import { BenchRuns } from './BenchRuns';
 import { Empty } from './ui';
 import { getJson } from './stream';
 
@@ -86,6 +87,7 @@ export function Bench() {
           <div className="bt good"><b>{e1.loom.broke}<small>/{e1.loom.n}</small></b><span>broke with Loom</span></div>
           <div className="bt"><b>{e1.blind.n}</b><span>task pairs run ({pairs[0] ? 'one per function' : 'E1 core'})</span></div>
         </section>)}
+      <BenchRuns />
       <section className="card sp"><h3>Live demo · this machine, just now</h3><LiveVsLoom teams={live} /></section>
       <p className="dim bscope">Scope: {e1 ? nOf(e1.blind.n) : 'E1'} of StaleBench, each run blind and with Loom. The 36-pair full set was not run. The live Django demo is one 3-task scenario, one run per side.</p>
       {cmp && (

@@ -7,15 +7,15 @@
       "change": "changes what it returns",
       "blind": {
         "broke": true,
-        "seconds": 15.7,
-        "error": "AssertionError: <django.utils.http._CoordT object at 0x109168be0> != 12345"
+        "seconds": 14.5,
+        "error": "AssertionError: <django.utils.http._CoordT object at 0x1088c94b0> != 12345"
       },
       "live": {
-        "broke": false,
-        "seconds": 25.4,
-        "passed": "Ran 48 tests",
-        "a_changed_s": 8.1,
-        "told_s": 10.4,
+        "broke": true,
+        "seconds": 18.8,
+        "error": "AssertionError: <django.utils.http._CoordT object at 0x1071798a0> != 12345",
+        "a_changed_s": 9.3,
+        "told_s": 9.8,
         "notice": "[loom] agent A changed base36_to_int in django/utils/http.py (behavior, in progress, not in your checkout yet)"
       }
     },
@@ -26,15 +26,15 @@
       "change": "adds a required `strict` argument",
       "blind": {
         "broke": true,
-        "seconds": 21.4,
+        "seconds": 19.7,
         "error": "TypeError: capfirst() missing 1 required keyword-only argument: 'strict'"
       },
       "live": {
         "broke": false,
-        "seconds": 26.2,
+        "seconds": 21.1,
         "passed": "Ran 20 tests",
-        "a_changed_s": 8.3,
-        "told_s": 12.7,
+        "a_changed_s": 7.5,
+        "told_s": 12.2,
         "notice": "[loom] agent A changed capfirst in django/utils/text.py (contract, in progress, not in your checkout yet)"
       }
     },
@@ -45,15 +45,15 @@
       "change": "adds a required `strict` argument",
       "blind": {
         "broke": true,
-        "seconds": 20.3,
+        "seconds": 14.7,
         "error": "TypeError: escape() missing 1 required keyword-only argument: 'strict'"
       },
       "live": {
         "broke": false,
-        "seconds": 32.7,
+        "seconds": 26.2,
         "passed": "Ran 24 tests",
-        "a_changed_s": 13.4,
-        "told_s": 19.9,
+        "a_changed_s": 11.7,
+        "told_s": 14.6,
         "notice": "[loom] agent A changed escape in django/utils/html.py (contract, in progress, not in your checkout yet)"
       }
     },
@@ -64,15 +64,15 @@
       "change": "adds a required `strict` argument",
       "blind": {
         "broke": true,
-        "seconds": 23.2,
+        "seconds": 18.1,
         "error": "TypeError: get_text_list() missing 1 required keyword-only argument: 'strict'"
       },
       "live": {
         "broke": false,
-        "seconds": 28.4,
+        "seconds": 27.0,
         "passed": "Ran 20 tests",
-        "a_changed_s": 9.2,
-        "told_s": 17.7,
+        "a_changed_s": 12.4,
+        "told_s": 15.4,
         "notice": "[loom] agent A changed get_text_list in django/utils/text.py (contract, in progress, not in your checkout yet)"
       }
     },
@@ -83,15 +83,15 @@
       "change": "changes what it returns",
       "blind": {
         "broke": true,
-        "seconds": 17.6,
-        "error": "AssertionError: 'doc_<django.utils.text._CoordT object at 0x107596320>' != 'doc_my_file.txt'"
+        "seconds": 12.0,
+        "error": "AssertionError: 'doc_<django.utils.text._CoordT object at 0x106b40be0>' != 'doc_my_file.txt'"
       },
       "live": {
-        "broke": false,
-        "seconds": 28.6,
-        "passed": "Ran 20 tests",
-        "a_changed_s": 9.1,
-        "told_s": 11.6,
+        "broke": true,
+        "seconds": 20.4,
+        "error": "AssertionError: 'doc_<django.utils.text._CoordT object at 0x10a7e0be0>' != 'doc_my_file.txt'",
+        "a_changed_s": 10.2,
+        "told_s": 11.1,
         "notice": "[loom] agent A changed get_valid_filename in django/utils/text.py (contract, in progress, not in your checkout yet)"
       }
     },
@@ -102,15 +102,15 @@
       "change": "changes what it returns",
       "blind": {
         "broke": true,
-        "seconds": 14.3,
+        "seconds": 12.8,
         "error": "TypeError: can only concatenate str (not \"_CoordT\") to str"
       },
       "live": {
-        "broke": false,
-        "seconds": 25.3,
-        "passed": "Ran 48 tests",
-        "a_changed_s": 9.1,
-        "told_s": 11.4,
+        "broke": true,
+        "seconds": 17.2,
+        "error": "TypeError: can only concatenate str (not \"_CoordT\") to str",
+        "a_changed_s": 7.2,
+        "told_s": 10.8,
         "notice": "[loom] agent A changed int_to_base36 in django/utils/http.py (behavior, in progress, not in your checkout yet)"
       }
     },
@@ -121,15 +121,15 @@
       "change": "adds a required `strict` argument",
       "blind": {
         "broke": true,
-        "seconds": 18.5,
+        "seconds": 14.8,
         "error": "TypeError: iri_to_uri() missing 1 required keyword-only argument: 'strict'"
       },
       "live": {
         "broke": false,
-        "seconds": 27.2,
+        "seconds": 17.4,
         "passed": "Ran 17 tests",
-        "a_changed_s": 11.3,
-        "told_s": 12.9,
+        "a_changed_s": 7.3,
+        "told_s": 9.0,
         "notice": "[loom] agent A changed iri_to_uri in django/utils/encoding.py (contract, in progress, not in your checkout yet)"
       }
     },
@@ -140,15 +140,15 @@
       "change": "changes what it returns",
       "blind": {
         "broke": true,
-        "seconds": 17.6,
+        "seconds": 13.0,
         "error": "AttributeError: '_CoordT' object has no attribute 'split'"
       },
       "live": {
         "broke": false,
-        "seconds": 35.1,
+        "seconds": 26.9,
         "passed": "Ran 20 tests",
-        "a_changed_s": 16.2,
-        "told_s": 23.4,
+        "a_changed_s": 12.2,
+        "told_s": 14.9,
         "notice": "[loom] agent A changed normalize_newlines in django/utils/text.py (contract, in progress, not in your checkout yet)"
       }
     },
@@ -159,15 +159,15 @@
       "change": "renames it (old name gone)",
       "blind": {
         "broke": true,
-        "seconds": 33.5,
+        "seconds": 14.0,
         "error": "NameError: name 'phone2numeric' is not defined. Did you mean: 'phone2numeric_v2'?"
       },
       "live": {
         "broke": false,
-        "seconds": 32.5,
+        "seconds": 23.9,
         "passed": "Ran 20 tests",
-        "a_changed_s": 13.1,
-        "told_s": 18.5,
+        "a_changed_s": 9.3,
+        "told_s": 9.6,
         "notice": "[loom] agent A changed phone2numeric in django/utils/text.py (removed, in progress, not in your checkout yet)"
       }
     },
@@ -178,15 +178,15 @@
       "change": "renames it (old name gone)",
       "blind": {
         "broke": true,
-        "seconds": 18.3,
+        "seconds": 15.9,
         "error": "NameError: name 'slugify' is not defined. Did you mean: 'slugify_v2'?"
       },
       "live": {
         "broke": false,
-        "seconds": 29.2,
+        "seconds": 26.1,
         "passed": "Ran 20 tests",
-        "a_changed_s": 10.1,
-        "told_s": 17.1,
+        "a_changed_s": 8.3,
+        "told_s": 8.6,
         "notice": "[loom] agent A changed slugify in django/utils/text.py (removed, in progress, not in your checkout yet)"
       }
     },
@@ -197,15 +197,15 @@
       "change": "renames it (old name gone)",
       "blind": {
         "broke": true,
-        "seconds": 18.0,
+        "seconds": 13.1,
         "error": "NameError: name 'strip_tags' is not defined. Did you mean: 'strip_tags_v2'?"
       },
       "live": {
         "broke": false,
-        "seconds": 38.6,
+        "seconds": 29.5,
         "passed": "Ran 24 tests",
-        "a_changed_s": 14.1,
-        "told_s": 24.3,
+        "a_changed_s": 10.2,
+        "told_s": 13.3,
         "notice": "[loom] agent A changed strip_tags in django/utils/html.py (removed, in progress, not in your checkout yet)"
       }
     },
@@ -220,15 +220,15 @@
         "error": "NameError: name 'urlencode' is not defined. Did you mean: 'urlencode_v2'?"
       },
       "live": {
-        "broke": false,
-        "seconds": 27.5,
-        "passed": "Ran 48 tests",
-        "a_changed_s": 11.3,
-        "told_s": 13.0,
+        "broke": true,
+        "seconds": 22.6,
+        "error": "NameError: name 'urlencode' is not defined. Did you mean: 'urlencode_v2'?",
+        "a_changed_s": 5.3,
+        "told_s": 5.6,
         "notice": "[loom] agent A changed urlencode in django/utils/http.py (removed, in progress, not in your checkout yet)"
       }
     }
   ],
-  "model": "sonnet",
-  "records": "runs/e1/20261014-164045"
+  "model": "haiku",
+  "records": "runs/e1/20261018-123802"
 }

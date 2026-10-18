@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -521,11 +521,29 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     }));
   }
 
+  /** The newest StaleBench run on disk, one trimmed record per finished agent run, so the Bench view can fill in while `loom stalebench` is still going. */
+  function benchRuns(dir: string) {
+    if (!existsSync(dir)) return { dir: null, records: [], updated: 0 };
+    const newest = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'records.jsonl'))).sort().pop();
+    if (!newest) return { dir: null, records: [], updated: 0 };
+    const f = join(dir, newest, 'records.jsonl');
+    const records = readFileSync(f, 'utf8').split('\n').filter(Boolean).flatMap((l) => {
+      try {
+        const r = JSON.parse(l);
+        return [{ id: r.id, mech: r.mech, cond: r.cond, solo: r.solo_pass, merged: r.merged_pass, interference: r.interference, seconds: r.b_seconds, cost: r.cost_usd, ok: r.b_ok,
+          aLandedS: r.a_landed_s ?? null, delivered: r.notices_delivered ?? 0, resumed: r.resumed ?? false,
+          notices: (r.notices ?? []).map((n: { text?: string; status?: string; score?: number }) => ({ text: String(n.text ?? '').slice(0, 900), status: n.status, score: n.score })) }];
+      } catch { return []; }
+    });
+    return { dir: newest, records, updated: statSync(f).mtimeMs };
+  }
+
   /** B5/B6 data views (GET, ?cwd=). `sessions` answers from the graph only when asked about a repo; without one it is the lead's live list. */
   async function viewRoute(u: URL, parts: string[], req: IncomingMessage): Promise<{ status: number; body: unknown } | undefined> {
     if (req.method !== 'GET') return undefined;
     const ok = (body: unknown) => ({ status: 200, body });
     if (parts[0] === 'bench' && parts[1] === 'compare' && parts.length === 2) return ok(benchCompare(opts.benchDir ?? BENCH));
+    if (parts[0] === 'bench' && parts[1] === 'runs' && parts.length === 2) return ok(benchRuns(resolve(opts.benchDir ?? BENCH, '..', 'runs', 'e1')));
     const cwd = String(u.searchParams.get('cwd') ?? req.headers['x-loom-cwd'] ?? '');
     const names = ['people', 'collab', 'collisions', 'regions', 'growth', 'brief'];
     if (!(names.includes(parts[0]) || (parts[0] === 'sessions' && cwd))) return undefined;

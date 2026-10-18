@@ -715,3 +715,10 @@ main:has(.hero2){display:block;padding:0;min-height:calc(100vh - 64px)}
 .sc-t b { font-size: 20px; line-height: 1.2; }
 .sc-t span { font-size: 12px; opacity: .65; }
 .sc-t.good b { color: #2E9E6B; } .sc-t.bad b { color: #D9534F; }
+
+.brgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin: 14px 0; }
+.brpair { border: 1px solid var(--line, rgba(128,128,128,.25)); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.brh { display: flex; flex-direction: column; gap: 2px; } .brh b { font-size: 15px; }
+.brs { display: flex; flex-direction: column; gap: 3px; border-radius: 10px; padding: 9px 11px; background: rgba(128,128,128,.08); font-size: 12px; }
+.brs b { font-size: 14px; } .brs.ok b { color: #2E9E6B; } .brs.bad b { color: #D9534F; } .brs.wait b { opacity: .5; }
+.brs small.bad { color: #D9534F; }
