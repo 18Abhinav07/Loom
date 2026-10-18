@@ -39,7 +39,7 @@ function Bar({ n, of, tone, text }: { n: number; of: number; tone: 'bad' | 'good
 }
 
 const SIZES = [
-  { n: '3 tasks', sub: 'live Django demo, one run per side', runs: '6 agent runs', cmd: 'cd django && loom init   # then press Plan' },
+  { n: '4 tasks', sub: 'live Django demo, one run per side', runs: '8 agent runs', cmd: 'cd django && loom init   # then press Plan' },
   { n: '12 pairs', sub: 'core set, blind vs Loom', runs: '24 agent runs', cmd: 'loom stalebench --pairs 12' },
   { n: '36 pairs', sub: 'every real-derived pair, blind vs Loom', runs: '72 agent runs', cmd: 'loom stalebench --pairs 36' },
   { n: '108 runs', sub: '36 pairs × blind, oracle and Loom', runs: '108 agent runs', cmd: 'loom stalebench --pairs 36 --oracle' },
@@ -55,7 +55,7 @@ function RunYourself() {
       <div className="sizes">{SIZES.map((x, k) => <button key={x.n} className={`size ${k === i ? 'on' : ''}`} onClick={() => { setI(k); setDone(false); }}><b>{x.n}</b><span>{x.sub}</span><small>{x.runs}</small></button>)}</div>
       <div className="cmdrow"><code>{s.cmd}</code>
         <button className="cp" onClick={() => { try { void navigator.clipboard.writeText(s.cmd.split('   #')[0]!); setDone(true); } catch { /* clipboard blocked */ } }}>{done ? 'Copied' : 'Copy'}</button></div>
-      <p className="dim" style={{ fontSize: 12 }}>Spends Claude Haiku tokens: it asks before starting. <code>loom stalebench --check</code> verifies your setup first and spends nothing. Django and the STALE-bench data are fetched by the command, not bundled. Published numbers are the 12-pair core; the 36-pair and 108-run sets have not been run.</p>
+      <p className="dim" style={{ fontSize: 12 }}>Spends Claude Haiku tokens: it asks before starting. <code>loom stalebench --check</code> verifies your setup first and spends nothing. Django and the STALE-bench data are fetched by the command, not bundled. Published numbers are the full 108-run set (36 pairs × blind, oracle, live).</p>
     </section>);
 }
 
@@ -99,7 +99,7 @@ export function Bench() {
           <p className="dim">A separate experiment from the scripted-A numbers above; each team is on the Team and Without Loom tabs.</p>
         </div>
       )}
-      <p className="dim bscope">Scope: {e1 ? nOf(e1.blind.n) : 'E1'} of StaleBench, each run blind and with Loom. The 36-pair full set was not run. The live Django demo is one 3-task scenario, one run per side.</p>
+      <p className="dim bscope">Scope: {e1 ? nOf(e1.blind.n) : 'E1'} of StaleBench, each run blind and with Loom. The live Django demo is one 4-task scenario, one run per side.</p>
       {cmp && (
         <section className="card sp">
           <h3>E1 · Does a stale function break the other agent's work?</h3>

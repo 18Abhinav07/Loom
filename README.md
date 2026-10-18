@@ -14,7 +14,7 @@ git clone https://github.com/18Abhinav07/Loom.git && cd Loom
 ./scripts/install.sh        # needs Node 22+, Docker (for FalkorDB), and the `claude` CLI logged in
 ```
 
-This puts a `loom` command on your PATH.
+This puts a `loom` command on your PATH. Full step-by-step, troubleshooting and where results land: [localsetup.md](localsetup.md).
 
 **One command:** after cloning, `./scripts/demo.sh` checks your machine, installs Loom, asks what to run, opens the dashboard and starts it.
 `./scripts/demo.sh live|12|36|108` skips the menu. `MODEL=haiku|sonnet` picks the model (Haiku default), `YES=1` skips the cost prompt.

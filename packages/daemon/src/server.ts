@@ -523,10 +523,11 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
 
   /** The newest StaleBench run on disk, one trimmed record per finished agent run, so the Bench view can fill in while `loom stalebench` is still going. */
   function benchRuns(dir: string) {
-    if (!existsSync(dir)) return { dir: null, records: [], updated: 0 };
-    const newest = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'records.jsonl'))).sort().pop();
-    if (!newest) return { dir: null, records: [], updated: 0 };
-    const f = join(dir, newest, 'records.jsonl');
+    // the newest local run, else the shipped 108-run records (bench/results/e1/records-108.jsonl), so a fresh clone still shows data
+    const shipped = join(opts.benchDir ?? BENCH, 'e1', 'records-108.jsonl');
+    const newest = existsSync(dir) ? readdirSync(dir).filter((d) => existsSync(join(dir, d, 'records.jsonl'))).sort().pop() : undefined;
+    if (!newest && !existsSync(shipped)) return { dir: null, records: [], updated: 0 };
+    const f = newest ? join(dir, newest, 'records.jsonl') : shipped;
     const records = readFileSync(f, 'utf8').split('\n').filter(Boolean).flatMap((l) => {
       try {
         const r = JSON.parse(l);
@@ -535,7 +536,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
           notices: (r.notices ?? []).map((n: { text?: string; status?: string; score?: number }) => ({ text: String(n.text ?? '').slice(0, 900), status: n.status, score: n.score })) }];
       } catch { return []; }
     });
-    return { dir: newest, records, updated: statSync(f).mtimeMs };
+    return { dir: newest ?? 'shipped-108', records, updated: statSync(f).mtimeMs };
   }
 
   /** B5/B6 data views (GET, ?cwd=). `sessions` answers from the graph only when asked about a repo; without one it is the lead's live list. */
