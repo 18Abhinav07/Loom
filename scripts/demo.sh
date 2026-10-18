@@ -16,7 +16,12 @@ say "1/5 checking your machine"
 command -v git >/dev/null    || die "need git"
 command -v node >/dev/null   || die "need Node 22+ (https://nodejs.org)"
 command -v docker >/dev/null || die "need Docker (FalkorDB runs in it)"
-docker info >/dev/null 2>&1  || die "Docker is installed but not running: start Docker Desktop and retry"
+if ! docker info >/dev/null 2>&1; then
+  echo "starting Docker…"
+  if [ "$(uname)" = Darwin ]; then open -a Docker; else sudo -n systemctl start docker 2>/dev/null || true; fi
+  for _ in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 2; done
+  docker info >/dev/null 2>&1 || die "Docker did not come up in 2 minutes: start it yourself and retry"
+fi
 command -v claude >/dev/null || die "need the Claude Code CLI, logged in (https://claude.com/claude-code)"
 PY=""; for p in python3.13 python3.12 python3; do command -v $p >/dev/null && $p -c 'import sys;sys.exit(sys.version_info<(3,12))' && PY=$p && break; done
 [ -n "$PY" ] || die "need Python 3.12+"

@@ -55,9 +55,19 @@ export async function stalebenchCmd(rest: string[]): Promise<number> {
   const claude = spawnSync('claude', ['--version']);
   if (claude.status !== 0) { console.error('need the Claude Code CLI (`claude`) on PATH'); return 1; }
   console.log('ok  claude CLI');
-  const docker = spawnSync('docker', ['info'], { stdio: 'ignore' });
-  if (docker.status !== 0) { console.error('need Docker running (FalkorDB)'); return 1; }
-  console.log('ok  docker');
+  const up = () => spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
+  if (!up()) {
+    if (spawnSync('docker', ['--version'], { stdio: 'ignore' }).status !== 0) { console.error('need Docker installed (FalkorDB runs in it): https://docs.docker.com/get-docker/'); return 1; }
+    if (rest.includes('--check')) console.log('  docker not running: will be started on a real run');
+    else {
+      console.log('starting Docker…');
+      if (process.platform === 'darwin') spawnSync('open', ['-a', 'Docker'], { stdio: 'ignore' });
+      else spawnSync('sudo', ['-n', 'systemctl', 'start', 'docker'], { stdio: 'ignore' });
+      for (let i = 0; i < 60 && !up(); i++) spawnSync('sleep', ['2']);
+      if (!up()) { console.error('Docker did not come up in 2 minutes: start it yourself and retry'); return 1; }
+      console.log('ok  docker started');
+    }
+  } else console.log('ok  docker');
   if (rest.includes('--check')) { console.log(`\nready. a real run would cost ${runs} Claude sessions. start it with: loom stalebench --pairs ${pairs}${oracle ? ' --oracle' : ''}`); return 0; }
 
   if (!rest.includes('--yes') && !process.stdin.isTTY) { console.error('this spends tokens; rerun with --yes to confirm'); return 1; }
