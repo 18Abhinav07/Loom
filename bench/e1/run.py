@@ -26,7 +26,7 @@ def display_repo() -> Path | None:
     try:
         from .team_run import REPO, ensure_repo, sh
         ensure_repo()
-        sh("git", "checkout", "-q", "-f", "--detach", "HEAD", check=False)
+        sh("git", "-c", "core.hooksPath=/dev/null", "checkout", "-q", "-f", "--detach", "HEAD", check=False)
         sh("loom", "init", "--no-lead")
         sh("loom", "ui", "--no-open")
         print(f"watch it live: http://localhost:4317/?cwd={REPO}  (Team tab = with Loom, Without Loom tab = blind)", flush=True)
@@ -126,7 +126,11 @@ def main() -> None:
     todo = [(inst, cond, t) for inst in select(a.set) for cond in a.conds.split(",") for t in range(a.trials)
             if (inst.id, cond, t) not in done]
     lock, stop = threading.Lock(), threading.Event()
-    repo = display_repo()
+    box: list = []
+    th = threading.Thread(target=lambda: box.append(display_repo()), daemon=True)
+    th.start(); th.join(timeout=240)   # the dashboard view is a bonus: never let it hold up the benchmark
+    repo = box[0] if box else None
+    if not box: print("(dashboard view is still being set up; the benchmark continues without it)", flush=True)
     if "live" in a.conds.split(","):
         for inst in {j[0].id: j[0] for j in todo}.values():
             a_patch(inst)   # build A's patch once, up front, so parallel runs of one pair never build it at the same time
