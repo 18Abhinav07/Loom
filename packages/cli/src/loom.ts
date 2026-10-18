@@ -1,4 +1,4 @@
-// loom init | lead | up | down | status | why | verify | lesson — attach a repo to Loom, start the lead, and run the daemon for plain `claude` sessions.
+// loom init | lead | up | down | reset | status | why | verify | lesson — attach a repo to Loom, start the lead, and run the daemon for plain `claude` sessions.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -286,6 +286,17 @@ export async function main(argv: string[]): Promise<number> {
   }
   if (cmd === 'up') return (await ensureDb()) || ensureDaemon();
   if (cmd === 'down') return stopDaemon();
+  if (cmd === 'reset') {   // forget this repo: drop its graph (and any run copies of it) so a fresh clone does not inherit the last run
+    let db: LoomDb;
+    try { db = await LoomDb.connect(); } catch (e) { return failed(e); }
+    try {
+      const repo = await resolveRepo(db, process.cwd());
+      if (!repo) { console.error('not a loom v2 repo'); return 1; }
+      const names = (await db.list()).filter((n) => n === repo.graph.name || n.startsWith(`${repo.graph.name}:`) || n.startsWith(`${repo.graph.name}_`));
+      for (const n of names) await db.graph(n).drop();
+      console.log(`dropped ${names.length} graph(s)`); return 0;
+    } finally { await db.close(); }
+  }
   if (cmd === 'status') {
     const at = resolveAttach(process.cwd());
     if (!at) { console.error('not a loom repo (run loom init)'); return 1; }

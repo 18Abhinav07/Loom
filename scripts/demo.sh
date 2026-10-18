@@ -3,12 +3,12 @@
 #   ./scripts/demo.sh                 pick interactively
 #   ./scripts/demo.sh live            Django demo: 3 agents without Loom vs 3 with (you press Plan)
 #   ./scripts/demo.sh 12|36|108       StaleBench: 12 pairs (24 runs), 36 pairs (72), 36 pairs x 3 conditions (108)
-#   env: MODEL=haiku|sonnet (default haiku)  DJANGO_DIR=~/loom-django  YES=1 (skip the token confirmation)
+#   env: MODEL=haiku|sonnet (default haiku)  DJANGO_DIR=<loom>/django  YES=1 (skip the token confirmation)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 MODEL="${MODEL:-haiku}"
-DJANGO_DIR="${DJANGO_DIR:-$HOME/loom-django}"
+DJANGO_DIR="${DJANGO_DIR:-$ROOT/django}"
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -41,23 +41,34 @@ M
 fi
 
 if [ "$CHOICE" = live ]; then
-  say "3/5 getting Django"
-  [ -d "$DJANGO_DIR/.git" ] || git clone --depth 1000 https://github.com/django/django "$DJANGO_DIR"
+  say "3/5 getting a fresh Django next to Loom ($DJANGO_DIR)"
+  # a fresh clone every run, so nothing from an earlier run (teams, worktrees, memory graph) can show up as this run
+  if [ -d "$DJANGO_DIR" ]; then (cd "$DJANGO_DIR" && loom down >/dev/null 2>&1; loom reset >/dev/null 2>&1) || true; rm -rf "$DJANGO_DIR"; fi
+  git clone -q --depth 1000 https://github.com/django/django "$DJANGO_DIR"
   say "4/5 starting Loom on Django"
   # the agents and the pass/fail verdict run Django's tests: give them a python with Django's own dependencies (macOS has no bare `python`)
-  [ -x "$DJANGO_DIR/.loom/venv/bin/python" ] || { mkdir -p "$DJANGO_DIR/.loom"; "$PY" -m venv "$DJANGO_DIR/.loom/venv"; }
+  mkdir -p "$DJANGO_DIR/.loom"; "$PY" -m venv "$DJANGO_DIR/.loom/venv"
   "$DJANGO_DIR/.loom/venv/bin/pip" install -q "asgiref>=3.8" "sqlparse>=0.5"
-  cd "$DJANGO_DIR"
-  # a fresh demo starts with no teams: move the last run's team snapshots, plans and worktrees aside so Home does not show them as this run
-  if ls .loom/teams/*.json >/dev/null 2>&1; then
-    OLD=".loom/previous-$(date +%s)"; mkdir -p "$OLD"
-    for w in .loom/wt/*/; do [ -d "$w" ] && git worktree remove --force "$w" 2>/dev/null; done
-    git worktree prune; mv .loom/teams "$OLD/teams"; [ -d .loom/plans ] && mv .loom/plans "$OLD/plans"; rm -rf .loom/wt
-    echo "moved the previous run to $OLD"
-  fi
-  echo "Loom will index Django, open the dashboard and start the Lead."
-  echo "In the dashboard press Plan: the Lead proposes the three tasks and runs them without Loom (Home) and with Loom (Team)."
-  exec loom init
+  (cd "$DJANGO_DIR" && loom init --no-lead && loom ui)
+  say "5/5 opening Claude (the Lead) in a new terminal"
+  # the Lead runs in its own terminal; when you quit it, that terminal stops Loom and deletes the Django copy and its memory
+  RUN="$(mktemp -t loom-lead).sh"
+  cat > "$RUN" <<S
+#!/usr/bin/env bash
+cd "$DJANGO_DIR" || exit 1
+loom lead
+echo; echo "cleaning up: stopping Loom, forgetting this run, removing $DJANGO_DIR"
+loom down >/dev/null 2>&1; loom reset >/dev/null 2>&1
+cd "$ROOT" && rm -rf "$DJANGO_DIR" "$RUN"
+echo "done. Run ./scripts/demo.sh live to start again."
+S
+  chmod +x "$RUN"
+  if [ "$(uname)" = Darwin ]; then osascript -e "tell application \"Terminal\" to activate" -e "tell application \"Terminal\" to do script \"$RUN\"" >/dev/null
+  elif command -v gnome-terminal >/dev/null; then gnome-terminal -- "$RUN"
+  elif command -v x-terminal-emulator >/dev/null; then x-terminal-emulator -e "$RUN" &
+  else echo "open a new terminal and run: $RUN"; fi
+  echo "In the dashboard press Plan. When you are done, quit Claude in the new terminal: it cleans up after itself."
+  exit 0
 fi
 
 case "$CHOICE" in 12) ARGS="--pairs 12";; 36) ARGS="--pairs 36";; 108) ARGS="--pairs 36 --oracle";; *) die "use live, 12, 36 or 108";; esac
