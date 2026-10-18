@@ -154,7 +154,7 @@ async function healthy(): Promise<boolean> {
 async function pingDb(): Promise<boolean> {
   try {
     const db = await Promise.race([LoomDb.connect(), new Promise<never>((_, r) => setTimeout(() => r(new Error('timeout')), 3000))]);
-    await db.close(); return true;
+    await db.relaxPersistence(); await db.close(); return true;
   } catch { return false; }
 }
 

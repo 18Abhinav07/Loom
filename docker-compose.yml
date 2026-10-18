@@ -3,6 +3,8 @@ services:
     image: falkordb/falkordb:latest
     ports: ["${FALKORDB_PORT:-6379}:6379", "${FALKORDB_UI_PORT:-3000}:3000"]
     volumes: ["falkordb-data:/data"]
+    environment:
+      REDIS_ARGS: "--save \"\" --stop-writes-on-bgsave-error no"
     restart: unless-stopped
   # `docker compose up` = FalkorDB + daemon + dashboard; then `docker compose exec daemon node packages/cli/dist/loom.cjs replay demo/run-1` and open http://127.0.0.1:4317
   daemon:

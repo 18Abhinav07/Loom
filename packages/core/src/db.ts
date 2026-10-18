@@ -19,6 +19,14 @@ export class LoomDb {
 
   graph(name: string): LoomGraph { return new LoomGraph(this.client.selectGraph(name), name); }
   list(): Promise<string[]> { return this.client.list(); }
+  /** Loom's graphs are rebuildable scratch state. A failing disk snapshot (a big Django graph forking in a small Docker VM) makes Redis refuse every write with MISCONF, so turn snapshots off. */
+  async relaxPersistence(): Promise<void> {
+    try {
+      const c = await this.client.connection;
+      await c.sendCommand(['CONFIG', 'SET', 'stop-writes-on-bgsave-error', 'no']);
+      await c.sendCommand(['CONFIG', 'SET', 'save', '']);
+    } catch { /* a managed server may forbid CONFIG; then leave it alone */ }
+  }
   async close(): Promise<void> { await this.client.close(); }
 }
 
