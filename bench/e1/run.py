@@ -13,11 +13,27 @@ from pathlib import Path
 from .agent_b import build_prompt, run_b
 from .amech import describe_change
 from .django_ws import BENCH, a_patch, diff, make_worktree, remove_worktree
+from .dash import Show
 from .grade import grade
 from .instances import CORE, PILOT, Instance, load_instances
 
 RUNS = BENCH / "runs" / "e1"
 RESUME_PROMPT = "Continue. Check any [loom] notices in your context and make sure your change still fits; then finish."
+
+
+def display_repo() -> Path | None:
+    """The repo whose dashboard shows these runs as teams; None if it cannot be set up (the run still works)."""
+    try:
+        from .team_run import REPO, ensure_repo, sh
+        ensure_repo()
+        sh("git", "checkout", "-q", "-f", "--detach", "HEAD", check=False)
+        sh("loom", "init", "--no-lead")
+        sh("loom", "ui", "--no-open")
+        print(f"watch it live: http://localhost:4317/?cwd={REPO}  (Team tab = with Loom, Without Loom tab = blind)", flush=True)
+        return REPO.resolve()
+    except Exception as e:
+        print(f"(dashboard view unavailable: {e})", flush=True)
+        return None
 
 
 def select(which: str) -> list[Instance]:
@@ -29,8 +45,9 @@ def select(which: str) -> list[Instance]:
     return [by_id[i] for i in ids]
 
 
-def run_one(inst: Instance, cond: str, trial: int, model: str, out_dir: Path, a_at: str = "edit") -> dict:
+def run_one(inst: Instance, cond: str, trial: int, model: str, out_dir: Path, a_at: str = "edit", repo: Path | None = None) -> dict:
     tag = f"{inst.id}__{cond}__{trial}"
+    show = Show(repo, inst, cond, tag)
     scratch = out_dir / "wt" / tag
     wt_b = make_worktree(inst.base_commit, scratch / "b")
     # Subscription-only: B must run on the claude.ai login, never on a pay-per-token key that happens to be set.
@@ -44,6 +61,9 @@ def run_one(inst: Instance, cond: str, trial: int, model: str, out_dir: Path, a_
             from .live import LiveRun  # Task 12
             live = LiveRun(inst, tag, wt_b, scratch, a_at=a_at)
             env.update(live.start())
+        show.set("b", "running")
+        if cond != "live":
+            show.set("a", "landed", lands=[inst.module_path])   # blind/oracle: A's change is fixed and graded offline
         log = run_b(wt_b, build_prompt(inst, oracle), model=model, env=env, log=out_dir / "logs" / f"{tag}.jsonl")
         resumed = False
         if live and live.needs_resume() and log.session_id:
@@ -56,6 +76,9 @@ def run_one(inst: Instance, cond: str, trial: int, model: str, out_dir: Path, a_
             resumed = True
         extra = {**live.finish(), "resumed": resumed} if live else {}
         g = grade(inst, diff(wt_b), scratch)
+        show.set("a", "landed", lands=[inst.module_path])
+        show.set("b", "landed" if g.merged_pass else "failed", resumed=int(resumed), reply=("merged with A: tests pass" if g.merged_pass else "merged with A: tests FAIL"))
+        show.done(g.merged_pass, g.merge_err or "ok", [n.get("text", "") for n in (extra.get("notices") or [])])
         rec = {"id": inst.id, "mech": inst.mechanism, "cond": cond, "trial": trial, "model": model,
                "solo_pass": g.solo_pass, "textual_conflict": g.textual_conflict, "merged_pass": g.merged_pass,
                "interference": g.interference, "solo_err": g.solo_err[-300:], "merge_err": g.merge_err[-300:],
@@ -103,6 +126,7 @@ def main() -> None:
     todo = [(inst, cond, t) for inst in select(a.set) for cond in a.conds.split(",") for t in range(a.trials)
             if (inst.id, cond, t) not in done]
     lock, stop = threading.Lock(), threading.Event()
+    repo = display_repo()
     if "live" in a.conds.split(","):
         for inst in {j[0].id: j[0] for j in todo}.values():
             a_patch(inst)   # build A's patch once, up front, so parallel runs of one pair never build it at the same time
@@ -111,7 +135,7 @@ def main() -> None:
         inst, cond, t = job
         if stop.is_set():
             return
-        r = run_one(inst, cond, t, a.model, out_dir, a.a_at)
+        r = run_one(inst, cond, t, a.model, out_dir, a.a_at, repo)
         with lock:
             recs.append(r)
             with open(rec_file, "a") as f:

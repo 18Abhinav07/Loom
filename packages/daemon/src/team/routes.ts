@@ -1,6 +1,6 @@
 // §3.4 the daemon's teams: one Team per started plan, driven from the dashboard, the CLI and the lead's MCP tools.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -26,7 +26,8 @@ function snapshot(v: TeamView) { try { mkdirSync(snapDir(v.repo), { recursive: t
 function saved(repo: string): TeamView[] {
   try { return readdirSync(snapDir(repo)).filter((f) => f.endsWith('.json')).map((f) => {
     const v = JSON.parse(readFileSync(join(snapDir(repo), f), 'utf8')) as TeamView;
-    return v.state === 'running' ? { ...v, state: 'stopped' as const } : v;   // it was running when the daemon went away
+    const fresh = Date.now() - statSync(join(snapDir(repo), f)).mtimeMs < 20_000;   // an outside runner (the benchmark) rewrites its file while it is alive
+    return v.state === 'running' && !fresh ? { ...v, state: 'stopped' as const } : v;   // it was running when the daemon went away
   }); } catch { return []; }
 }
 const clip = (s: string, n = 1500) => (s.length > n ? s.slice(0, n) + '…' : s);
