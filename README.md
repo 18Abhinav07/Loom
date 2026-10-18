@@ -167,6 +167,75 @@ stress test, not a frequency estimate. One run per pair, Haiku only, so treat sm
 **Operational note.** FalkorDB is started with RDB snapshots off (`--save "" --stop-writes-on-bgsave-error no`), because a failed snapshot
 makes Redis refuse writes and the daemon then answers HTTP 500. The compose file and `loom up` set this.
 
+## Graph data model
+
+One FalkorDB graph per run, `<tenant>:<repo>`, plus `trace:<run>` (every step) and a global `lessons` graph.
+
+| Node | Key properties | Meaning |
+|---|---|---|
+| `Symbol` | `id`, `qname`, `file`, `sig`, `bodyHash`, `name`, `doc` | a function/method/class from the tree-sitter index |
+| `Region` | `id`, `path` | a lockable code region (the unit of a lease) |
+| `Agent`, `Session`, `Person` | `id` | who is working; one `Session` per Claude Code run |
+| `Task`, `Decision` | `id`, `title`/`text` | the plan and the reasons behind it |
+| `Change`, `Version`, `Commit` | `id`, `kind`, `before`/`after`, `sha` | a detected symbol change and the commit that carries it |
+| `Notice` | `id`, `agent`, `text` | a stale-read warning delivered to one agent |
+| `TestRun`, `Evidence`, `Lesson` | `id`, `stale` | test results, claim evidence, ignored-notice lessons |
+| `Message`, `Thread`, `Handoff` | `id` | agent-to-agent messages (the message bus) |
+
+| Relationship | Meaning |
+|---|---|
+| `(Symbol)-[:CALLS]->(Symbol)` | static call graph, the backbone of every traversal |
+| `(Agent)-[:READ \| :EDITED \| :LEASED]->(Symbol\|Region)` | what each agent has read, edited or locked; `LEASED` carries `mode`, `contract`, `expires` |
+| `(Change)-[:OF]->(Symbol)`, `(Change)-[:BY]->(Agent)` | who changed which symbol |
+| `(Notice)-[:FOR]->(Agent)`, `(Notice)-[:ON]->(Change)` | who was told about what |
+| `(Decision)-[:CONSTRAINS]->(Symbol)` | a decision that binds code |
+| `(TestRun)-[:COVERS {bodyHash, strength}]->(Symbol)` | which tests cover which symbol, and whether still fresh |
+| `(Commit)-[:PREV]->(Commit)`, `[:CHILD_OF]` | history; `loom why` walks decision, task, agent, change, commit |
+
+Indexes: `Symbol(id, file)`, `Agent(id)`, `Change/Notice/Task/Decision(id)`, `Notice(agent)`, `Commit(sha)`, plus a full-text index on `Symbol(name, doc)` (see `packages/core/src/schema.ts`).
+
+## The Cypher the product depends on
+
+All of these live in `packages/daemon/src/`. Without FalkorDB there is no lease arbiter, no impact traversal and no `why`.
+
+**1. Atomic function-level lease (compare-and-set), `lease.ts`.** One query checks every requested symbol for a conflicting live lease and
+grants all or none. FalkorDB serializes writes per graph, so two agents can never both win (E2: 50 agents x 200 attempts, zero violations).
+
+```cypher
+MATCH (ag:Agent {id: $agent})
+UNWIND $sids AS sid
+MATCH (s:Region {id: sid})
+OPTIONAL MATCH (o:Agent)-[l:LEASED]->(s) WHERE o.id <> $agent AND l.expires > $now AND l.mode IN $conflictsWith
+WITH ag, collect(DISTINCT s) AS syms, count(l) AS conflicts
+WHERE conflicts = 0 AND size(syms) = size($sids)
+UNWIND syms AS t
+MERGE (ag)-[nl:LEASED]->(t)
+SET nl.mode = $mode, nl.task = $task, nl.expires = $now + $ttl
+RETURN count(t) AS granted
+```
+
+**2. Who is affected by a change (impact traversal), `coordinator.ts`.** On every edit the changed symbol is walked backwards over `CALLS`
+1 to 3 hops to find other agents whose in-flight code depends on it; the shortest path becomes the notice text and the graph path shown in the dashboard.
+
+```cypher
+MATCH p = (c:Symbol)-[:CALLS*1..3]->(s:Symbol {id: $sid})
+MATCH (b:Agent)-[r:READ|EDITED|LEASED]->(c)
+WHERE b.id <> $agent
+RETURN b.id AS agent, type(r) AS rel, length(p) AS hops, [n IN nodes(p) | n.qname] AS path
+```
+
+**3. Claim verification, `verify.ts`.** `COVERS` edges tie test runs to symbols with the body hash they were run against;
+a later edit marks them stale (`MATCH (r:TestRun {agent:$agent})-[:COVERS]->(:Symbol {id:id}) SET r.stale = true`), which is how a stale or blind-spot claim is blocked.
+
+**4. Provenance (`loom why`), `why.ts`.** Walks `Decision -> Task -> Agent -> Change -> Commit` so every deny, notice and verdict carries its graph path.
+
+**5. Merge-check, `mergecheck.ts`.** Forks the run graph, predicts the broken callers with the same traversal, merges both branches and runs the tests to score the prediction.
+
+## Track and AI disclosure
+
+Track: **Agent Memory and Coordination** (FalkorDB is the agents' shared memory, lock manager and message bus).
+Built with Claude Code as the AI coding assistant; design, experiments and the benchmark protocol are the author's, and the results here come from real runs (`bench/results/e1/records-108.jsonl`).
+
 ## How it is built
 
 - `packages/indexer` — tree-sitter Python symbols, calls, signatures, mutants
