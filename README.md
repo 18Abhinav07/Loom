@@ -7,6 +7,40 @@ changes `slugify`'s contract while agent B writes a new caller against the old o
 every agent's in-flight edits, function-level leases, decisions and test evidence in one graph, and on every edit
 runs a traversal that tells exactly the affected agent, mid-work, what changed under it.
 
+## StaleBench: how Loom is measured
+
+[STALE-bench](https://github.com/illinoisdata/STALE-bench) (Django) tests the failure Loom targets: **two agents whose patches each pass alone but break when merged**,
+because one changed a function's contract while the other built on the old one. We use its 36 real-derived task pairs (12 Django helper
+functions x 3 kinds of change: **rename**, **signature** gains a required argument, **return type** changes).
+
+Each pair is run three ways with the same model (Claude Haiku), repo and prompts. Agent A's breaking change is a scripted AST rewrite; agent B is a real Claude agent that
+builds on the helper. Grading is offline and automatic: B's patch alone, then merged with A's, against the Django tests.
+
+| Condition | What B gets | Why it exists |
+|---|---|---|
+| **blind** | nothing | the baseline: does the conflict really happen? |
+| **oracle** | told the exact change up front | the ceiling: is the task solvable at all? |
+| **live** | Loom's hooks deliver a notice mid-work, computed from the graph | the product |
+
+**Findings (108 real runs, 36 pairs x 3 conditions):**
+
+| condition | B passes alone | merged tests pass | interference |
+|---|---|---|---|
+| blind | 36/36 | **0/36** | 100% |
+| oracle | 1/36 | 36/36 | 0% |
+| live (Loom) | 13/36 | **24/36** | **33%** |
+
+![StaleBench results in the Loom dashboard: 36/36 broke without Loom, 12/36 with Loom](docs/img/bench-summary.png)
+
+- Without Loom every merge broke: the conflict is real and the tasks are solvable (oracle 36/36).
+- Loom removed two thirds of the breakage: **24 of 36 merged cleanly**. By kind of change: **signature 12/12, rename 9/12, return type 3/12**.
+- Honest weakness: 9 of the 12 remaining failures are return-type changes. The notice arrived (with the before/after code) but Haiku often kept its own code. That is model compliance, not a missing notice.
+- Notice precision (E3): 43 notices delivered, 34 precise (79%): the notice named the helper the pair conflicts on and the blind twin had interfered.
+- Caveats: constructed pairs are a stress test, not a frequency estimate (on mined real PR pairs the paper saw interference in 1 of 834 runs); one run per pair, Haiku only.
+
+The whole study costs about $0.60 on a Claude plan and takes ~20 minutes: `./scripts/demo.sh 108` (see [localsetup.md](localsetup.md)). The dashboard's **Benchmark** tab
+shows every pair, what Loom told B, and whether the merged code passed. Raw records: [`bench/results/e1/records-108.jsonl`](bench/results/e1/records-108.jsonl). The full per-pair grid: [docs/img/bench-full-page.png](docs/img/bench-full-page.png).
+
 ## Quickstart
 
 ```bash
