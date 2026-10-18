@@ -27,7 +27,9 @@ export async function startUi(opts: { port: number; host?: string; bus: EventBus
       if (run && opts.serves && !opts.serves(run)) return json(404, { error: 'run not served' });   // read-only: no reads of other graphs
       if (u.pathname === '/snapshot') {
         const c = opts.runs.get(run);
-        return c ? json(200, await c.snapshot()) : json(404, { error: 'run not loaded' });
+        if (c) return json(200, await c.snapshot());
+        const x = await opts.extra?.(u, req);   // a team's run is served by Live
+        return x !== undefined ? json(200, x) : json(404, { error: 'run not loaded' });
       }
       if (u.pathname === '/events') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });

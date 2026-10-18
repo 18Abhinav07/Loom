@@ -51,7 +51,7 @@ export function createLoomMcp(o: LoomMcpOpts): McpServer {
   tool('why', 'Decision → task → agent → change → commit path for a symbol (or file.py:line).', { symbol: z.string() });
   // The lead's team tools (daemon refuses them from a team agent). `team` defaults to your repo's newest running team.
   const team = z.string().optional().describe('team id; default: the newest running team of this repo');
-  tool('start_team', 'Start a team from a checked plan: a slug in .loom/plans/ or a plan file. Agents report back to you here.', { plan: z.string(), model: z.string().optional() });
+  tool('start_team', 'Start a team from a checked plan: a slug in .loom/plans/ or a plan file. Agents report back to you here. blind:true starts the same plan WITHOUT Loom (for the comparison).', { plan: z.string(), model: z.string().optional(), blind: z.boolean().optional() });
   tool('team_status', 'Agents of a team (or all teams of this repo): state, task, landed commit.', { team });
   tool('message_agent', 'Send a message to a running team agent.', { team, agent: z.string(), text: z.string() });
   tool('stop_team', 'Stop every agent of a team.', { team });

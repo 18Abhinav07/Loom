@@ -17,13 +17,17 @@ async function changedRegions(root: string, a: string, b: string): Promise<Map<s
   return out;
 }
 
-const meta = (root: string, c: string) => { const [ae, ct] = git(root, 'show', '-s', '--format=%ae%n%ct', c).split('\n'); return { by: ae, at: Number(ct) * 1000 }; };
+const meta = (root: string, c: string) => {
+  try { const [ae, ct] = git(root, 'show', '-s', '--format=%ae%n%ct', c).split('\n'); return { by: ae, at: Number(ct) * 1000 }; }
+  catch { return { by: 'unknown', at: 0 }; }   // an unreadable commit (partial clone) must not stop init
+};
 
 /** §4.6 + §6.3 step 4: regions a commit changed with no .loom version in that commit get Version {external} BY the git author. */
 export async function reconcile(g: LoomGraph, root: string, from: string | null, to: string, cap = 200) {
   const range = from ? `${from}..${to}` : to;
   // the root commit has no parent; with from = null the init baseline already covers it
-  const commits = (gitTry(root, 'rev-list', '--reverse', '--no-merges', range) ?? '').split('\n').filter(Boolean)
+  const commits = (gitTry(root, 'rev-list', '--reverse', '--no-merges', ...(from ? [] : ['-n', String(cap)]), range)   // no watermark: only the latest `cap` commits, never a whole history (Django has 30k)
+     ?? '').split('\n').filter(Boolean)
     .filter((c) => gitTry(root, 'rev-parse', '-q', '--verify', `${c}^`) !== null);
   if (!commits.length) return { commits: 0, versions: 0, capped: false };
   const write = async (id: string, region: string, v: Change, sha: string, by: string, at: number, isRange = false) => {

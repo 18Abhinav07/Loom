@@ -11,10 +11,13 @@
     "build:ui": "pnpm --filter dashboard build"
   },
   "devDependencies": {
-    "typescript": "5.6.3",
-    "vitest": "2.1.8",
-    "tsx": "4.19.2",
+    "@testing-library/dom": "10.4.0",
+    "@testing-library/react": "16.3.0",
+    "@types/node": "22.10.1",
     "esbuild": "0.24.0",
-    "@types/node": "22.10.1"
+    "jsdom": "26.1.0",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3",
+    "vitest": "2.1.8"
   }
 }

@@ -1,0 +1,5 @@
+T4 sample: 36 A patches reduced to their definition-file hunks; full Django suite, serial
+bar: pooled recall ≥ 0.8 at test-method level over patches that break ≥ 1 test
+used=0 breaking-nothing=0 crash=0
+pooled: failed=0 predicted=0 hit=0 recall=0.000 precision=—
+T4: FAIL (recall 0.000)

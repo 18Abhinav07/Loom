@@ -7,6 +7,62 @@ changes `slugify`'s contract while agent B writes a new caller against the old o
 every agent's in-flight edits, function-level leases, decisions and test evidence in one graph, and on every edit
 runs a traversal that tells exactly the affected agent, mid-work, what changed under it.
 
+## Quickstart
+
+```bash
+git clone https://github.com/18Abhinav07/Loom.git && cd Loom
+./scripts/install.sh        # needs Node 22+, Docker (for FalkorDB), and the `claude` CLI logged in
+```
+
+This puts a `loom` command on your PATH.
+
+**One command:** after cloning, `./scripts/demo.sh` checks your machine, installs Loom, asks what to run (live Django demo, or StaleBench 12 / 36 / 108), opens the dashboard and starts it. `./scripts/demo.sh live|12|36|108` skips the menu; `MODEL=sonnet` changes the model. The steps below are what it does.
+
+**1. Run the StaleBench demo on Django (the hackathon demo)**
+
+```bash
+git clone https://github.com/django/django && cd django
+loom init                   # indexes Django, installs hooks + MCP, starts FalkorDB + the daemon, opens the dashboard
+```
+
+`loom init` drops the Django StaleBench plan in `.loom/plans/`. In the dashboard press **Plan**: the Lead proposes the three
+Django tasks, then starts them twice, three Haiku agents **without** Loom (Home) and three **with** Loom (Team), on your own Claude plan.
+Home shows each side's agents and whether the merged tests pass; Team shows the locks, notices and messages between agents.
+
+**2. Run the StaleBench benchmark yourself**
+
+```bash
+loom stalebench --check                 # verifies git, Python 3.12+, Docker, claude; spends nothing
+loom stalebench --pairs 12              # core set: 12 pairs x (blind, Loom) = 24 agent runs
+loom stalebench --pairs 36              # all 36 real-derived pairs = 72 runs
+loom stalebench --pairs 36 --oracle     # 36 pairs x 3 conditions = 108 runs
+```
+
+One pair is two agents editing the same Django code at once, one changing a helper the other calls. The 36 pairs are STALE-bench's
+real-derived tier (12 helper functions x 3 kinds of change); **108 is 36 pairs x 3 conditions, not 108 tasks**. The command clones the
+STALE-bench data and Django mirror for you, asks before spending tokens (Haiku by default, `--model sonnet` to change), then writes
+`bench/results/e1.json`, which the dashboard's Benchmark tab shows. Shipped results are the 12-pair core; the 36-pair and 108-run sets are not run.
+
+**3. Use it on your own project (beta, may break)**
+
+```bash
+cd /path/to/your/git/repo
+loom init                   # indexes the repo, installs the hooks + MCP, starts the daemon, opens the dashboard, starts the Lead
+```
+
+`loom init` leaves you in the **Lead**: a Claude session that talks with you, splits the work into tasks, and starts one agent per task.
+The dashboard for this repo is `http://127.0.0.1:4317/?cwd=<repo>` (run `loom ui` any time to reopen it). Then:
+
+| | |
+|---|---|
+| `loom lead` | start the Lead again |
+| `loom ui` | open this repo's dashboard |
+| `loom up` / `loom down` | start / stop the daemon (`init` already starts it) |
+| `loom team start --plan <file>` | start a team from a plan file (or approve one in the dashboard's Plans tab) |
+| `loom status` | what is running here |
+
+Or skip the Lead: run plain `claude` in the repo (and in its worktrees); the hooks coordinate them.
+
 ## What it does
 
 | | |

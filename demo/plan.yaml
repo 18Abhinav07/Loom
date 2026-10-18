@@ -1,7 +1,7 @@
 # G3 demo: three workers on django.utils.text, where a's signature change has to reach b and stop c.
 # Run from the loom repo:  PYTHONPATH=.:.. PATH=$PWD/bench/.venv/bin:$PATH loom run --plan demo/plan.yaml --model sonnet
 repo: ~/Documents/loom-demo
-test: "cd tests && PYTHONPATH=.. ~/Documents/loom/bench/.venv/bin/python runtests.py utils_tests.test_text template_tests.filter_tests.test_slugify utils_tests.test_text_a utils_tests.test_text_b utils_tests.test_text_c --parallel 1"
+test: "cd tests && PYTHONPATH=.. ~/Documents/loom-v2/bench/.venv/bin/python runtests.py utils_tests.test_text template_tests.filter_tests.test_slugify utils_tests.test_text_a utils_tests.test_text_b utils_tests.test_text_c --parallel 1"
 tasks:
   - id: a
     title: strict slugify

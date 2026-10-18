@@ -25,7 +25,7 @@ import { LiveRoutes } from './live/routes.js';
 import { activeSession, finishSession, gitTry, lessonsFor, sessionBriefing, startSession } from '@loom/memory';
 import { Bus } from './bus.js';
 import { TeamRoutes, TEAM_TOOLS } from './team/routes.js';
-import { benchCompare, brief, collab, collisions, growth, people, region, sessionDetail, sessions as sessionRows } from './views.js';
+import { benchCompare, brief, collab, collisions, growth, people, region, searchRegions, sessionDetail, sessions as sessionRows } from './views.js';
 import { Mirror } from './mirror.js';
 import { Channels } from './channels.js';
 import { authorized, machineToken } from './token.js';
@@ -53,7 +53,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
   /** Spec §4.4 deployed mode: every write route refuses except /replay of a recording under `replayRoots`. */
   readOnly?: boolean; tenant?: string; replayRoots?: string[]; host?: string;
   /** Story's launcher and showcase: the bench dir it runs E1 in, how it spawns, the recording "Watch 3 real agents" replays. */
-  benchRoot?: string; benchRunner?: BenchRunner; demoRun?: string;
+  benchRoot?: string; benchRunner?: BenchRunner; demoRun?: string; cwd?: string;
   /** The Loom home holding `token` (B3); tests pass a tmp dir. Default LOOM_HOME, else ~/.loom. */
   home?: string;
   /** Teams' agent binary and poll interval (tests pass the fake claude). */
@@ -259,7 +259,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
           if (!r.ok) throw new Error(`${r.status} ${out.slice(0, 200)}`);
           if (route.startsWith('/mcp/') && JSON.parse(out).ok === false) throw new Error(JSON.parse(out).error);
         };
-        const job = replay(dir, run, self, { speed: b.speed === undefined ? undefined : Number(b.speed), progress: p })
+        const job = replay(dir, run, self, { speed: b.speed === undefined ? undefined : Number(b.speed), maxGapMs: b.maxGapMs === undefined ? undefined : Number(b.maxGapMs), progress: p })
           .catch((e) => { p.failed.push(String((e as Error).message ?? e)); p.done = true; return p; });
         return send(200, b.wait ? await job : p);
       }
@@ -371,6 +371,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
           return send(r.ok ? 200 : 400, r);
         }
         const id = parts[1];
+        if (req.method === 'GET' && parts.length === 3 && parts[2] === 'history') { const r = teams.agentHistory(id, u.searchParams.get('agent') ?? ''); return send(r.ok ? 200 : 404, r); }
         if (req.method === 'GET' && parts.length === 2) { const v = teams.get(id); return v ? send(200, v) : send(404, { error: `no team ${id}` }); }
         if (req.method === 'POST' && parts.length === 3) {
           const r = parts[2] === 'stop' ? await teams.stop(id) : parts[2] === 'merge' ? await teams.merge(id, b.into)
@@ -492,6 +493,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       }
       send(404, { error: 'not found' });
     } catch (e) {
+      console.error(`[loom] ${req.method} ${req.url}: ${(e as Error).stack ?? e}`);
       send(500, { error: String(e) });
     }
   });
@@ -536,7 +538,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       case 'collisions': return ok(await collisions(g, { kind: q('kind'), person: q('person') }));
       case 'growth': return ok(await growth(g));
       case 'brief': return ok(await brief(g, repo.root, q('person')));
-      case 'regions': { const r = parts[1] ? await region(g, parts[1]) : null; return r ? ok(r) : { status: 404, body: { error: 'no such region' } }; }
+      case 'regions': { if (!parts[1]) return ok(await searchRegions(g, q('q') ?? '', Math.min(Number(q('limit')) || 30, 5000))); const r = parts[1] ? await region(g, parts[1]) : null; return r ? ok(r) : { status: 404, body: { error: 'no such region' } }; }
       default: {
         if (parts.length === 1) return ok(await sessionRows(g, { person: q('person'), limit: q('limit') ? Number(q('limit')) : undefined }));
         const d = await sessionDetail(g, parts[1]);
@@ -554,7 +556,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     if (f && !existsSync(f)) return { ok: false, problems: [`no plan file at ${f}`], warnings: [] };
     const { plan, problems } = parseTeamPlan(f ? readFileSync(f, 'utf8') : String(b.text ?? ''));
     if (!plan) return { ok: false, problems, warnings: [] };
-    const regionPaths = (await repo.graph.query<{ path: string }>('MATCH (r:Region) RETURN r.path AS path').catch(() => [])).map((r) => r.path);
+    const regionPaths = (await repo.graph.query<{ path: string }>('MATCH (r:Region) WHERE r.path IS NOT NULL RETURN r.path AS path').catch(() => [])).map((r) => r.path);
     const files = (ref: string) => { const out = gitTry(repo.top, 'ls-tree', '-r', '--name-only', ref); if (out === null) throw new Error(`unknown ref ${ref}`); return out.split('\n').filter(Boolean); };
     return { ...checkTeamPlan(plan, { files, regions: regionPaths.length, regionPaths }), plan };
   }
@@ -573,7 +575,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
     : await startUi({ port: opts.uiPort ?? 4317, host: opts.host, bus, runs, distDir: opts.distDir ?? DIST, serves, raw: async (u, req, res) => {
       if (u.pathname !== '/lead' && !u.pathname.startsWith('/lead/api/')) return false;
       if (opts.readOnly) { res.writeHead(404, { 'content-type': 'application/json' }); res.end('{"error":"read-only: the lead page is local only"}'); }   // never hand out the token
-      else if (u.pathname === '/lead') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(leadPage(token)); }
+      else if (u.pathname === '/lead') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': "frame-ancestors 'self'" }); res.end(leadPage(token)); }
       else {
         const path = u.pathname.slice('/lead/api'.length);
         if (path === '/events' || path === '/sessions' || path.startsWith('/sessions/')) await passThrough(req, res, port, path, u.search);
@@ -591,7 +593,15 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       }
       if (u.pathname === '/demo/replay' && req.method === 'POST') {   // the API port's /replay, fixed to the shipped recording
         const r = await fetch(`http://127.0.0.1:${port}/replay`, { method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ dir: opts.demoRun ?? join(DEMO, 'run-1'), rel: 'demo/run-1' }) });
+          body: JSON.stringify({ ...(await body(req)), dir: opts.demoRun ?? join(DEMO, 'run-1'), rel: 'demo/run-1' }) });
+        return new Reply(r.status, await r.json());
+      }
+      if (u.pathname === '/snapshot' && !runs.has(run)) { const v = await live.snapshot(run); if (v) return v; }   // a team's run lives in Live, not in a coordinator
+      if (u.pathname === '/ctx') return { cwd: opts.cwd ?? process.cwd() };   // the repo the dashboard opens on when the page names none
+      if (!opts.readOnly && (u.pathname === '/teams' || u.pathname.startsWith('/teams/') || u.pathname === '/plans' || u.pathname.startsWith('/plans/'))) {
+        const init: RequestInit = { method: req.method, headers: { 'content-type': 'application/json', ...(req.headers['x-loom-home'] ? { 'x-loom-home': String(req.headers['x-loom-home']) } : {}) } };
+        if (req.method === 'POST') init.body = JSON.stringify(await body(req));
+        const r = await fetch(`http://127.0.0.1:${port}${u.pathname}${u.search}`, init);   // the dashboard is a client of the API port, never a second implementation
         return new Reply(r.status, await r.json());
       }
       if (u.pathname === '/timeline') return timeline(run);

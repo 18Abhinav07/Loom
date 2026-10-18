@@ -5,7 +5,7 @@ export interface Node { id: string; qname: string; file: string; kind: string }
 export interface Lease { agent: string; symbol: string; mode: string; contract: boolean; expires: number }
 export interface Agent { id: string; state: string; heartbeatAt: number | null; task: string | null; taskTitle: string | null }
 export interface Notice { id: string; agent: string; author: string; status: string; kind?: string; text: string }
-export interface Snapshot { nodes: Node[]; edges: { from: string; to: string }[]; agents: Agent[]; leases: Lease[]; notices: Notice[] }
+export interface Snapshot { nodes: Node[]; edges: { from: string; to: string }[]; agents: Agent[]; leases: Lease[]; notices: Notice[]; waits?: { agent: string; symbol: string }[]; changed?: string[] }
 export interface LoomEvent { type: string; at: number; run: string; agent?: string; data: Record<string, any> }
 /** A transient effect the graph animates: a notice pulse along a path, or a denied-lease flash. */
 export interface Fx { kind: 'pulse' | 'deny'; ids: string[]; at: number }
@@ -55,38 +55,50 @@ export function reduce(st: RunState, e: LoomEvent): RunState {
   }
 }
 
-export const getJson = async <T,>(path: string): Promise<T> => { const r = await fetch(path); if (!r.ok) throw new Error(`${path}: ${r.status}`); return r.json(); };
+export const getJson = async <T,>(path: string): Promise<T> => {
+  const r = await fetch(path);
+  if (!r.ok) {
+    const e = await r.json().then((b: { error?: unknown }) => b?.error, () => undefined);
+    throw new Error(typeof e === 'string' ? e : `${path}: ${r.status}`);
+  }
+  return r.json();
+};
 export const fetchRuns = () => getJson<string[]>('/runs');
 export const fetchPlan = (run: string) => getJson<any>(`/plan?run=${encodeURIComponent(run)}`);
 
 /** Subscribe to one run: snapshot first, then events; fx older than 4 s are dropped. */
-export function useRun(run: string | null): RunState {
+let ctxP: Promise<string> | null = null;
+const runCwd = (): Promise<string> => (ctxP ??= new URLSearchParams(location.search).get('cwd') ? Promise.resolve(new URLSearchParams(location.search).get('cwd')!)
+  : getJson<{ cwd: string }>('/ctx').then((c) => c.cwd).catch(() => ''));
+
+export function useRun(run: string | null, pollMs = 0): RunState {
   const [st, setSt] = useState<RunState>(initial);
   useEffect(() => {
     setSt(initial());
     if (!run) return;
     let alive = true; let timer: ReturnType<typeof setTimeout> | undefined;
     const q = encodeURIComponent(run);
-    const refetch = () => getJson<Snapshot>(`/snapshot?run=${q}`).then((snap) => alive && setSt((p) => ({ ...p, snap }))).catch(() => {});
+    const refetch = () => runCwd().then((cwd) => getJson<Snapshot>(`/snapshot?run=${q}&cwd=${encodeURIComponent(cwd)}`)).then((snap) => alive && setSt((p) => ({ ...p, snap }))).catch(() => {});
     refetch();
-    const es = new EventSource(`/events?run=${q}`);
-    es.onopen = () => setSt((p) => ({ ...p, live: true }));
-    es.onerror = () => setSt((p) => ({ ...p, live: false }));
-    es.onmessage = (m) => {
+    const es = typeof EventSource === 'undefined' ? null : new EventSource(`/events?run=${q}`);
+    if (es) es.onopen = () => setSt((p) => ({ ...p, live: true }));
+    if (es) es.onerror = () => setSt((p) => ({ ...p, live: false }));
+    if (es) es.onmessage = (m) => {
       const e = JSON.parse(m.data) as LoomEvent;
       setSt((p) => reduce(p, e));
       if (e.type === 'change.recorded' || e.type === 'lease.granted' || e.type === 'agent.registered') {
         clearTimeout(timer); timer = setTimeout(refetch, 500);
       }
     };
+    const poll = pollMs ? setInterval(refetch, pollMs) : undefined;
     const gc = setInterval(() => setSt((p) => (p.fx.length ? { ...p, fx: p.fx.filter((f) => Date.now() - f.at < 4000) } : p)), 1000);
-    return () => { alive = false; es.close(); clearTimeout(timer); clearInterval(gc); };
-  }, [run]);
+    return () => { alive = false; es?.close(); clearTimeout(timer); clearInterval(gc); if (poll) clearInterval(poll); };
+  }, [run, pollMs]);
   return st;
 }
 
 /** A stable colour per agent id. */
-const PALETTE = ['#4f8cff', '#f59e0b', '#10b981', '#e879f9', '#22d3ee', '#f97316', '#a3e635', '#f43f5e'];
+const PALETTE = ['#D97757', '#5B8FC7', '#9B6BB5', '#4F8A43', '#C99619', '#2E9AA0', '#C4554D', '#7A6A5A'];
 export function agentColor(id: string): string {
   let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return PALETTE[h % PALETTE.length];

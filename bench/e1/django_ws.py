@@ -36,6 +36,8 @@ def _git(*args: str, cwd: Path | None = None, check: bool = True, input: str | N
 
 
 def ensure_mirror() -> Path:
+    if CACHE.is_symlink() and not CACHE.exists():   # dangling link (e.g. to a moved checkout): drop it
+        CACHE.unlink()
     if not MIRROR.exists():
         CACHE.mkdir(parents=True, exist_ok=True)
         _git("clone", "--bare", "--filter=blob:none", "https://github.com/django/django.git", str(MIRROR))
