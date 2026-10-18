@@ -5,6 +5,7 @@ import json
 import os
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -23,9 +24,16 @@ def _post(path: str, body: dict) -> dict:
         return json.loads(r.read() or b"{}")
 
 
-def _get(path: str) -> object:
-    with urllib.request.urlopen(LOOM_URL + path, timeout=30) as r:
-        return json.loads(r.read())
+def _get(path: str, tries: int = 3) -> object:
+    """GET with a short retry: under many parallel runs the daemon can answer 500 for a moment."""
+    for i in range(tries):
+        try:
+            with urllib.request.urlopen(LOOM_URL + path, timeout=30) as r:
+                return json.loads(r.read())
+        except (urllib.error.URLError, OSError):
+            if i == tries - 1:
+                raise
+            time.sleep(1.0 + i)
 
 
 def claude_settings() -> dict:
@@ -61,7 +69,10 @@ class LiveRun:
     def _qualified(self) -> bool:
         kind = "edit" if self.a_at == "edit" else "read"
         q = {"agent": "B", "kind": kind} | ({} if kind == "edit" else {"file": self.inst.module_path})
-        return _get(f"/runs/{urllib.parse.quote(self.run, safe='')}/touched?{urllib.parse.urlencode(q)}")["touched"]
+        try:
+            return bool(_get(f"/runs/{urllib.parse.quote(self.run, safe='')}/touched?{urllib.parse.urlencode(q)}")["touched"])
+        except (urllib.error.URLError, OSError, KeyError, ValueError):
+            return False   # a failed poll is "not yet", never a crash; the next poll or needs_resume retries
 
     def _trigger(self) -> None:
         while not self._stop.wait(1.0):
@@ -75,7 +86,10 @@ class LiveRun:
             self._thread.join(timeout=300)  # a landing in progress finishes first
         if self.a_landed_s is None and self.a_at in ("edit", "read") and self._qualified():
             self._land_a()
-        notices = _get(f"/runs/{urllib.parse.quote(self.run, safe='')}/notices")
+        try:
+            notices = _get(f"/runs/{urllib.parse.quote(self.run, safe='')}/notices")
+        except (urllib.error.URLError, OSError, ValueError):
+            return False
         return any(n["agent"] == "B" and n["status"] == "pending" for n in notices)
 
     def start_detached(self) -> dict[str, str]:
@@ -111,7 +125,10 @@ class LiveRun:
 
     def finish(self) -> dict:
         self._stop.set()
-        notices = _get(f"/runs/{urllib.parse.quote(self.run, safe='')}/notices")
+        try:
+            notices = _get(f"/runs/{urllib.parse.quote(self.run, safe='')}/notices")
+        except (urllib.error.URLError, OSError, ValueError):
+            return False
         return {"run": self.run, "a_at": self.a_at, "a_landed": self.a_landed_s is not None, "a_landed_s": self.a_landed_s,
                 "notices": notices, "notices_delivered": sum(n.get("deliveredAt") is not None for n in notices)}
 

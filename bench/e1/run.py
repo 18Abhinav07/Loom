@@ -135,7 +135,12 @@ def main() -> None:
         inst, cond, t = job
         if stop.is_set():
             return
-        r = run_one(inst, cond, t, a.model, out_dir, a.a_at, repo)
+        try:
+            r = run_one(inst, cond, t, a.model, out_dir, a.a_at, repo)
+        except Exception as e:   # one bad run must not kill the other 100; it is simply not recorded, and --skip-done reruns it
+            with lock:
+                print(f"{inst.id:32} {cond:6} SKIPPED ({type(e).__name__}: {e})", flush=True)
+            return
         with lock:
             recs.append(r)
             with open(rec_file, "a") as f:
