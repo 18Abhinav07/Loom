@@ -49,7 +49,7 @@ export async function stalebenchCmd(rest: string[]): Promise<number> {
   if (!existsSync(venv)) {
     console.log('creating the bench python environment…');
     if (rest.includes('--check')) console.log('  missing: will be created on a real run');
-    else if (!sh(py, ['-m', 'venv', '.venv'], bench) || !sh(join(bench, '.venv', 'bin', 'pip'), ['install', '-q', '.'], bench)) { console.error('could not set up bench/.venv'); return 1; }
+    else if (!sh(py, ['-m', 'venv', '.venv'], bench) || !sh(join(bench, '.venv', 'bin', 'pip'), ['install', '-q', 'pytest==8.3.3', 'asgiref>=3.8', 'sqlparse>=0.5'], bench)) { console.error('could not set up bench/.venv'); return 1; }
   } else console.log('ok  bench python environment');
 
   const claude = spawnSync('claude', ['--version']);
