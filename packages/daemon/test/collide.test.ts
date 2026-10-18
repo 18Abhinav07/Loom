@@ -67,3 +67,19 @@ test('a contract_break landing writes landing_rejected', async () => {
   expect(cs).toHaveLength(1);
   expect(cs[0]).toMatchObject({ outcome: 'rejected', parties: [{ person: 'ann@x', agent: 'a' }] });
 }, 40_000);
+
+test('a landed agent holds no lease afterwards, even on a function it leased but did not change', async () => {
+  const r = gitTree({ 'a.py': 'def f():\n    return 1\n\n\ndef g():\n    return 2\n' });
+  const t = await team(r, ['a']);
+  await t.stop();
+  const run = routes.runs.get(t.id)!;
+  const wt = t.view().agents[0].worktree;
+  const pre = await routes.hook('PreToolUse', { live: run.live, g: run.g, agent: 'a', root: wt }, { hook_event_name: 'PreToolUse', cwd: wt, tool_name: 'Edit',
+    tool_input: { file_path: join(wt, 'a.py'), old_string: 'return 1', new_string: 'return 3' } } as any);
+  expect(pre).toBe('');                                   // a leases f, then never edits it
+  writeFileSync(join(wt, 'a.py'), 'def f():\n    return 1\n\n\ndef g():\n    return 5\n');
+  git(wt, 'add', '-A'); git(wt, 'commit', '-qm', 'change g');
+  expect((await routes.land(t.id, 'a'))?.status).toBe('landed');
+  const held = await run.g.query<{ r: string }>('MATCH (:Agent {id: "a"})-[:LEASED]->(r:Region) RETURN r.id AS r');
+  expect(held).toEqual([]);
+}, 40_000);

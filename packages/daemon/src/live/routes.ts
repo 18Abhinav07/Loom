@@ -141,8 +141,10 @@ export class LiveRoutes {
       const res = await landOne({ repo: r.repo, wt: a.worktree, landed: r.landed, agent, title: a.title, testCmd: r.test, compileCmd: r.compile, g: r.g });
       if (res.status === 'landed') {
         await r.live.land(agent, res.regions, { sha: res.sha!, task: a.task });
+        await r.live.release(agent);   // the agent is done: anything it leased but did not change (or only meant to) must not stay locked
         await r.g.query('MATCH (t:Task {id: $task}) SET t.doneAt = $now', { task: a.task, now: Date.now() });
       }
+      if (res.status === 'empty') await r.live.release(agent);
       if (res.status === 'contract_break' || res.status === 'tests_failed' || res.status === 'compile_failed' || res.status === 'conflict') {
         const me = { person: '', session: agent, agent };
         this.onCollision?.(run, { kind: res.status === 'conflict' ? 'merge_conflict' : 'landing_rejected', region: res.regions ?? [], parties: [me],
