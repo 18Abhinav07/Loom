@@ -104,7 +104,7 @@ export class TeamRoutes {
 
   /** The lead's MCP tools. `team` defaults to the newest running team of the caller's repo. */
   async mcp(tool: (typeof TEAM_TOOLS)[number], cwd: string, a: Record<string, unknown>): Promise<unknown> {
-    if (tool === 'start_team') return this.start({ cwd, plan: String(a.plan ?? ''), model: a.model ? String(a.model) : undefined });
+    if (tool === 'start_team') return this.start({ cwd, plan: String(a.plan ?? ''), model: a.model ? String(a.model) : undefined, blind: a.blind === true });
     const c = await this.d.check(cwd, {}).catch(() => null);
     const repo = c?.top ?? undefined;
     const mine = this.list(repo);

@@ -97,3 +97,10 @@ test('the lead MCP tool starts a team; a team agent is refused', async () => {
   expect(st.result.team.id).toBe(s.result.team.id);
   expect((await call('stop_team', {})).result.ok).toBe(true);
 }, 30_000);
+
+test('the lead MCP start_team honours blind:true (the without-Loom team)', async () => {
+  const r = repo();
+  const s = await post('/mcp/start_team', { cwd: r, args: { plan: 'p', blind: true } }).then((x) => x.json());
+  expect(s.result.team.blind).toBe(true);
+  await post('/mcp/stop_team', { cwd: r, args: {} });
+}, 30_000);
