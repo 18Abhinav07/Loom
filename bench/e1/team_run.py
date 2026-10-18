@@ -120,6 +120,12 @@ def main() -> int:
             with open(out / "records.jsonl", "a") as f:
                 f.write(json.dumps(r) + "\n")
             print(f"{inst.id:34s} {cond:6s} {'PASS' if r['pass'] else 'FAIL'} landed {r['landed']}/{r['agents']} {r['seconds']}s", flush=True)
+    recs = [json.loads(l) for l in (out / "records.jsonl").read_text().splitlines()]
+    side = lambda c: {"n": sum(r["cond"] == c for r in recs), "broke": sum(r["cond"] == c and not r["pass"] for r in recs)}
+    res = {"kind": "teams", "model": a.model, "blind": side("blind"), "loom": side("live"),
+           "pairs": [{k: r[k] for k in ("id", "mech", "cond", "pass", "landed", "agents", "seconds")} for r in recs]}
+    (BENCH / "results" / "e6.json").write_text(json.dumps(res, indent=1))
+    print(f"without Loom {res['blind']['broke']}/{res['blind']['n']} broke; with Loom {res['loom']['broke']}/{res['loom']['n']} broke")
     print(f"records: {out}/records.jsonl")
     return 0
 

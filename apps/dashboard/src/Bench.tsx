@@ -89,6 +89,16 @@ export function Bench() {
         </section>)}
       <BenchRuns />
       <section className="card sp"><h3>Live demo · this machine, just now</h3><LiveVsLoom teams={live} /></section>
+      {b.e6?.blind && b.e6?.loom && (
+        <div className="card reveal">
+          <div className="h">Same pairs, run as live agent teams (A and B are both real agents)</div>
+          <div className="btiles">
+            <div className="bt bad"><b>{b.e6.blind.broke}<small>/{b.e6.blind.n}</small></b><span>failed without Loom</span></div>
+            <div className="bt good"><b>{b.e6.loom.broke}<small>/{b.e6.loom.n}</small></b><span>failed with Loom</span></div>
+          </div>
+          <p className="dim">A separate experiment from the scripted-A numbers above; each team is on the Team and Without Loom tabs.</p>
+        </div>
+      )}
       <p className="dim bscope">Scope: {e1 ? nOf(e1.blind.n) : 'E1'} of StaleBench, each run blind and with Loom. The 36-pair full set was not run. The live Django demo is one 3-task scenario, one run per side.</p>
       {cmp && (
         <section className="card sp">
