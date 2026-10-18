@@ -4,7 +4,7 @@ import { Avatar, Empty, Problem, PageHead } from './ui';
 import { ago, person } from './explain';
 
 interface Row { sid: string; person: string; kind: string; parent: string | null; team: string | null; task: string | null; started: number; turns: number; handoff?: string }
-interface Detail extends Omit<Row, 'turns'> { turns: { from: string; text: string; at: number }[]; versions: { region: string; commit: string }[]; children: string[] }
+interface Detail extends Omit<Row, 'turns'> { turns: { from: string; text: string; at: number }[]; versions: { region: string; commit: string | null }[]; children: string[] }
 export const when = (t: number) => (t ? new Date(t).toLocaleString() : '');
 
 export function Sessions() {
@@ -33,7 +33,7 @@ export function Sessions() {
               <div className="sdh"><Avatar name={person(open.person)} size={36} /><div><b>{person(open.person)}</b><div className="dim">{open.kind}{open.team ? ` · team ${open.team}` : ''}{open.task ? ` · task ${open.task}` : ''} · started {when(open.started)}</div></div></div>
               {!open.turns.length && <p className="dim">No messages were recorded for this session.</p>}
               <div className="chat">{open.turns.map((t, i) => <div key={i} className={`bub ${t.from === 'user' ? 'me' : 'ai'}`}><small>{t.from === 'user' ? 'user' : 'claude'}{t.at ? ` · ${ago(t.at)}` : ''}</small>{t.text}</div>)}</div>
-              {open.versions.length > 0 && <><h3 style={{ marginTop: 14 }}>Functions it changed</h3><div>{open.versions.map((v, i) => <span key={i} className="chipr" style={{ '--c': 'var(--accent)' } as never}>{v.region.split('::').pop()}() <small className="dim">{v.commit.slice(0, 7)}</small></span>)}</div></>}
+              {open.versions.length > 0 && <><h3 style={{ marginTop: 14 }}>Functions it changed</h3><div>{open.versions.map((v, i) => <span key={i} className="chipr" style={{ '--c': 'var(--accent)' } as never}>{v.region.split('::').pop()}() <small className="dim">{(v.commit ?? '').slice(0, 7)}</small></span>)}</div></>}
             </>)}
         </div>
       </div>

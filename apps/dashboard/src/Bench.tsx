@@ -104,7 +104,7 @@ export function Bench() {
       {cmp && (
         <section className="card sp">
           <h3>E5 · Real agents on one repo</h3>
-          {!tot ? <p className="dim">Real agents: not run yet.</p> : <>
+          {!tot ? <p className="dim">No recorded real-agent scenarios in the bench files. Live team runs (Home, Team) are shown there, not here.</p> : <>
             <div className="tw"><table className="grid"><thead><tr><th>Scenario</th><th>Without Loom</th><th>With Loom</th><th>Broken merged</th><th>Merge conflicts</th></tr></thead>
               <tbody>{cmp.e5.map((s) => (
                 <tr key={s.scenario}><td>{label(s.scenario)}</td><td>{`${s.blind.all_pass}/${s.blind.n} pass`}</td><td>{`${s.loom.all_pass}/${s.loom.n} pass`}</td>

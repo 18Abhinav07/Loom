@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type Team } from './api';
 import { agentColor } from './stream';
 import { Bot } from './ui';
+import { landText } from './explain';
 
 type Go = (view: string, say?: string) => void;
 
@@ -27,6 +28,33 @@ function TeamPanel({ title, t }: { title: string; t: Team | null }) {
           </div>
         </div>))}
       {t?.result && !t.result.pass && <pre className="dim" style={{ whiteSpace: 'pre-wrap', fontSize: 11, maxHeight: 90, overflow: 'auto' }}>{t.result.out}</pre>}
+    </div>
+  );
+}
+
+/** The full account of one team: every agent's own last report, how often it was sent back, and the test output in full. */
+function TeamDetail({ title, note, t }: { title: string; note: string; t: Team | null }) {
+  return (
+    <div className="card sp" style={{ flex: '1 1 420px', minWidth: 0 }}>
+      <h3 style={{ margin: 0 }}>{title}</h3>
+      <p className="dim" style={{ margin: '4px 0 12px' }}>{note}</p>
+      {!t ? <p className="dim">Not started. Press Plan the run.</p> : <>
+        {t.agents.map((a) => (
+          <details key={a.id} style={{ padding: '8px 0', borderTop: '1px solid var(--line, #eee)' }} open={a.state === 'failed'}>
+            <summary style={{ cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'center' }}>
+              <Bot color={agentColor(a.id)} size={26} mode={a.state === 'running' ? 'm-work' : ''} />
+              <b style={{ color: agentColor(a.id) }}>{a.id}</b><span>{a.title}</span><span className="dim">· {AGENT_STATE[a.state] ?? a.state}{a.lands.length > 1 ? ` · sent back ${a.lands.length - 1}×` : ''}</span>
+            </summary>
+            {a.lands.length > 0 && <p className="dim" style={{ margin: '6px 0 0' }}>Landing checks: {a.lands.map(landText).join(' → ')}</p>}
+            <p style={{ whiteSpace: 'pre-wrap', margin: '6px 0 0' }}>{a.lastReply ?? 'No report yet.'}</p>
+          </details>))}
+        <div style={{ borderTop: '1px solid var(--line, #eee)', paddingTop: 10 }}>
+          {t.state === 'running' ? <span className="dim">Running. The test verdict appears here when all three are done.</span>
+            : !t.result ? <span className="dim">Finished with no test verdict.</span>
+            : <><b style={{ color: t.result.pass ? 'var(--good)' : 'var(--bad)' }}>Tests on the shared branch: {t.result.pass ? 'pass' : 'fail'}</b>
+              {!t.result.pass && <pre className="dim" style={{ whiteSpace: 'pre-wrap', fontSize: 11, maxHeight: 220, overflow: 'auto', marginTop: 6 }}>{t.result.out}</pre>}</>}
+        </div>
+      </>}
     </div>
   );
 }
@@ -66,7 +94,11 @@ export function Home({ go, plan }: { go: Go; plan: () => void }) {
           <TeamPanel title="Without Loom" t={blind} />
           <TeamPanel title="With Loom" t={loom} />
         </div>
-      </div></div>
+      </div>
+        <div className="hgrid" style={{ display: 'flex', flexWrap: 'wrap', gap: 18, marginTop: 28 }}>
+          <TeamDetail title="Without Loom: what the blind agents did" note="Three agents on the same code. No hooks, no leases, no messages: they cannot see each other." t={blind} />
+          <TeamDetail title="With Loom: what the connected agents did" note="Same three tasks. Loom locks functions, tells agents when code they call changes, and checks each change before it lands." t={loom} />
+        </div></div>
     </section>
   );
 }

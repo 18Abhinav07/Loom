@@ -40,7 +40,7 @@ export function Functions({ demo = false }: { demo?: boolean }) {
   useEffect(() => { setAll(null); (demo ? demoHits() : api<Hit[]>('/regions?q=::definition&limit=5000')).then(setAll).catch(() => setAll([])); }, [demo]);
   useEffect(() => {
     if (demo) return;
-    const pull = () => api<Team[]>('/teams').then((t) => setTeam(t.find((x) => x.state === 'running') ?? t[0] ?? null)).catch(() => {});
+    const pull = () => api<Team[]>('/teams').then((t) => { const lm = t.filter((x) => !x.blind); setTeam(lm.find((x) => x.state === 'running') ?? lm[0] ?? null); }).catch(() => {});
     pull(); const i = setInterval(pull, 4000); return () => clearInterval(i);
   }, [demo]);
   const run = useRun(team?.id ?? null, 2000);
@@ -141,6 +141,7 @@ export function Functions({ demo = false }: { demo?: boolean }) {
         <div className="chips">{chip('all', 'All files')}{chip('locked', 'Being edited now')}{chip('changed', 'Changed this run')}{chip('hot', 'Most depended on')}</div>
         {live && <span className="livetag"><i className="ldot" />updates live</span>}
       </div>
+      {all && filter !== 'all' && ![...files.keys()].some(hit) && <p className="dim" style={{ margin: '4px 0 10px' }}>{{ locked: live ? 'Nobody is editing a function right now.' : 'No team is running, so nothing is being edited.', changed: 'No function has changed in this run yet.', hot: 'No function has two or more callers in this run yet.' }[filter]}</p>}
       {!all ? <p className="dim">loading…</p> : (
         <div className="map">
           <div className="card tree">
