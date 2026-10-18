@@ -26,7 +26,8 @@ export function renderNotice(from: string, ch: ChangeRec, via: { rel: string; ho
   out.push(via.hops === 0
     ? `  you ${via.rel === 'READ' ? 'read' : via.rel === 'LEASED' ? 'hold a lease on' : 'edited'} it directly`
     : `  you depend on it: ${via.path.join(' → ')}`);
-  out.push('  Both changes will be merged: make your code work with the AFTER version.');
+  out.push('  Both changes will be merged: make your code work with the AFTER version.',
+    '  Change your code now to fit it (a different return type or value breaks callers that expect the old one), then run it against the AFTER behaviour before you finish.');
   return out.join('\n');
 }
 

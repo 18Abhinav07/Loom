@@ -25,8 +25,8 @@ git clone https://github.com/django/django && cd django
 loom init                   # indexes Django, installs hooks + MCP, starts FalkorDB + the daemon, opens the dashboard
 ```
 
-`loom init` drops the Django StaleBench plan in `.loom/plans/`. In the dashboard press **Plan**: the Lead proposes the three
-Django tasks, then starts them twice, three Haiku agents **without** Loom (Home) and three **with** Loom (Team), on your own Claude plan.
+`loom init` drops the Django StaleBench plan in `.loom/plans/`. In the dashboard press **Plan**: the Lead proposes the four
+Django tasks, then starts them twice, four Haiku agents **without** Loom (Home) and four **with** Loom (Team), on your own Claude plan.
 Home shows each side's agents and whether the merged tests pass; Team shows the locks, notices and messages between agents.
 
 **2. Run the StaleBench benchmark yourself**

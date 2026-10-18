@@ -35,7 +35,7 @@ export function Home({ go, plan }: { go: Go; plan: () => void }) {
       </svg>
       <div className="blob b1" /><div className="blob b2" />
       <div className="h2c">
-        <span className="h5chip reveal"><span className="ldot" /><b>StaleBench</b> · Django · 3 Claude Haiku agents each side</span>
+        <span className="h5chip reveal"><span className="ldot" /><b>StaleBench</b> · Django · 4 Claude Haiku agents each side</span>
         <h1 className="reveal" style={{ '--i': 1 } as never}>Four agents, one function.<br /><em>Without Loom they collide.</em></h1>
         <p className="reveal" style={{ '--i': 2 } as never}>The same four tasks, run twice: once by agents that cannot see each other, once by agents sharing Loom's memory.</p>
         <div className="reveal" style={{ '--i': 3 } as never}><button className="btn or xl pulse" onClick={plan}>Plan the run →</button></div>

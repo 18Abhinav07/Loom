@@ -47,7 +47,7 @@ export function Blind({ go }: { go?: (v: string) => void }) {
   if (!teams) return <p className="dim">loading…</p>;
   const mine = [...teams].filter((t) => t.blind).sort((a, b) => b.startedAt - a.startedAt);
   const cur = mine.find((t) => t.id === pick) ?? mine.find((t) => t.state === 'running') ?? mine[0];
-  if (!cur) return <section className="screen on page"><div className="card onboard reveal"><Bot color="#9A988F" size={56} /><h3>No run without Loom yet</h3><p>Press Plan. The three agents without Loom appear here as soon as they start.</p><button className="btn or" onClick={() => go?.('home')}>Back to Home</button></div></section>;
+  if (!cur) return <section className="screen on page"><div className="card onboard reveal"><Bot color="#9A988F" size={56} /><h3>No run without Loom yet</h3><p>Press Plan. The four agents without Loom appear here as soon as they start.</p><button className="btn or" onClick={() => go?.('home')}>Back to Home</button></div></section>;
   const agents = cur.agents; const landed = agents.filter((a) => a.state === 'landed').length;
   return (
     <section className="screen on">

@@ -195,18 +195,11 @@ export class Live {
       for (const id of [...d.tombstoned, ...d.renamed.map((r) => r.from)]) changes.set(id, 'removed');
     }
     const now = this.now();
-    const text = (t: string, rs: Region[], id: string) => { const r = rs.find((x) => x.id === id); return r ? t.slice(r.start, r.end) : ''; };
-    /** What changed inside a function whose header did not: B cannot see a new return type or value from the signature alone. */
-    const bodyDiff = (id: string): string => {
-      const o = text(before, B.regions, id).split('\n'), n = text(after ?? '', A.regions, id).split('\n');
-      const so = new Set(o), sn = new Set(n);
-      return [...o.filter((l) => !sn.has(l)).map((l) => `- ${l.trim()}`), ...n.filter((l) => !so.has(l)).map((l) => `+ ${l.trim()}`)].slice(0, 12).join('\n');
-    };
     let notices = A.degraded ? 0 : await this.liveEdges(a, A, now);
     for (const [region, k] of changes) {
       const cid = ulid(now);
-      await this.g.query(`CREATE (:Change {id: $cid, agent: $agent, region: $region, kind: $k, beforeSig: $b, afterSig: $after, diff: $diff, at: $now, seq: $seq})`,
-        { cid, agent: a.id, region, k, b: sigB.get(region) ?? null, after: sigA.get(region) ?? null, diff: k === 'body' && !A.degraded ? bodyDiff(region) : '', now, seq: this.seq++ });
+      await this.g.query(`CREATE (:Change {id: $cid, agent: $agent, region: $region, kind: $k, beforeSig: $b, afterSig: $after, at: $now, seq: $seq})`,
+        { cid, agent: a.id, region, k, b: sigB.get(region) ?? null, after: sigA.get(region) ?? null, now, seq: this.seq++ });
       notices += await this.notify(a.id, region, k, cid, kind);
     }
     return { changed: [...changes.keys()].sort(), notices };
@@ -359,8 +352,8 @@ export class Live {
     const meta = await this.regions([n.region!]);
     const m = meta.get(n.region!);
     const qname = this.qn(meta, n.region!);
-    const [c] = await this.g.query<{ kind: string; after: string | null; diff: string | null }>(`MATCH (c:Change {agent: $author, region: $region})
-      RETURN c.kind AS kind, c.afterSig AS after, c.diff AS diff ORDER BY c.at DESC, c.seq DESC LIMIT 1`, { author: n.author, region: n.region });
+    const [c] = await this.g.query<{ kind: string; after: string | null }>(`MATCH (c:Change {agent: $author, region: $region})
+      RETURN c.kind AS kind, c.afterSig AS after ORDER BY c.at DESC, c.seq DESC LIMIT 1`, { author: n.author, region: n.region });
     if (n.kind === 'wake') {
       const { renderWake } = await import('../notice.js');
       return renderWake(n.author, qname, c?.after ?? m?.sig ?? qname, n.why === 'lapsed' ? 'lapsed' : 'landed');
@@ -369,7 +362,7 @@ export class Live {
     const [h] = await this.g.query<{ id: string }>(`MATCH (o:Agent)-[l:LEASED]->(:Region {id: $region}) WHERE l.expires > $now RETURN o.id AS id LIMIT 1`,
       { region: n.region, now: this.now() });
     return R.renderChange({ author: n.author, qname, path: m?.path ?? n.region!.split('::')[0], kind: c?.kind ?? 'body',
-      before: m?.sig ?? null, after: c?.after ?? null, diff: c?.diff ?? '', holder: h?.id ?? null }, n.kind === 'unleased_write');
+      before: m?.sig ?? null, after: c?.after ?? null, holder: h?.id ?? null }, n.kind === 'unleased_write');
   }
 
   private async ackU(agent: string, id: string): Promise<void> {
