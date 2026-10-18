@@ -71,8 +71,9 @@ export async function stalebenchCmd(rest: string[]): Promise<number> {
   const before = new Set(existsSync(runsDir) ? readdirSync(runsDir) : []);
   const env = subscriptionEnv(process.env);
   const run = spawnSync(venv, ['-m', 'e1.run', '--set', pairs === '36' ? 'all' : 'core', '--conds', conds, '--trials', trials, '--model', model], { cwd: bench, stdio: 'inherit', env });
+  if (run.status !== 0 && !existsSync(runsDir)) { console.error('the benchmark failed before recording anything'); return 1; }
   const fresh = (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((d) => !before.has(d)).sort().pop();
-  if (!fresh) { console.error('the run produced no records'); return 1; }
+  if (!fresh || !existsSync(join(runsDir, fresh, 'records.jsonl'))) { console.error('the run produced no records'); return 1; }
   console.log(`\nrecords: bench/runs/e1/${fresh}`);
   if (!sh(venv, ['-m', 'e1.report', '--records', `runs/e1/${fresh}`], bench)) return 1;
   console.log('done. open the Benchmark tab of the dashboard (loom ui) to see the result.');
