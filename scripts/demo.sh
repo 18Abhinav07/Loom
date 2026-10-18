@@ -48,6 +48,13 @@ if [ "$CHOICE" = live ]; then
   [ -x "$DJANGO_DIR/.loom/venv/bin/python" ] || { mkdir -p "$DJANGO_DIR/.loom"; "$PY" -m venv "$DJANGO_DIR/.loom/venv"; }
   "$DJANGO_DIR/.loom/venv/bin/pip" install -q "asgiref>=3.8" "sqlparse>=0.5"
   cd "$DJANGO_DIR"
+  # a fresh demo starts with no teams: move the last run's team snapshots, plans and worktrees aside so Home does not show them as this run
+  if ls .loom/teams/*.json >/dev/null 2>&1; then
+    OLD=".loom/previous-$(date +%s)"; mkdir -p "$OLD"
+    for w in .loom/wt/*/; do [ -d "$w" ] && git worktree remove --force "$w" 2>/dev/null; done
+    git worktree prune; mv .loom/teams "$OLD/teams"; [ -d .loom/plans ] && mv .loom/plans "$OLD/plans"; rm -rf .loom/wt
+    echo "moved the previous run to $OLD"
+  fi
   echo "Loom will index Django, open the dashboard and start the Lead."
   echo "In the dashboard press Plan: the Lead proposes the three tasks and runs them without Loom (Home) and with Loom (Team)."
   exec loom init
