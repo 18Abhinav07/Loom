@@ -1,12 +1,35 @@
 import { useEffect, useState } from 'react';
 import { api, type Team } from './api';
-import { RunStage } from './Demo';
+import { agentColor } from './stream';
 import { Bot } from './ui';
 
 type Go = (view: string, say?: string) => void;
 
 /** What the Lead is asked when someone presses Plan: the StaleBench run, three Haiku agents each side. */
 export const STALEBENCH_ASK = 'Run the StaleBench workflow on this repo: check plan django-stalebench, then start it twice with model haiku: once with blind:true (three agents without Loom) and once normally (three agents with Loom). Report when both finish.';
+
+const AGENT_STATE: Record<string, string> = { running: 'working', landed: 'landed', failed: 'failed', stopped: 'stopped', waiting: 'waiting', queued: 'queued' };
+
+/** One team's three agents with what each is doing, and the test verdict once the team is done. Same view for the blind and the Loom team. */
+function TeamPanel({ title, t }: { title: string; t: Team | null }) {
+  return (
+    <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line, #eee)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <b>{title}</b>
+        <span className="dim">{!t ? 'not started' : t.state === 'running' ? 'running' : t.result ? (t.result.pass ? 'done · tests pass' : 'done · tests fail') : t.state === 'done' ? 'done · no test verdict' : t.state}</span>
+      </div>
+      {!t ? <p className="dim">Press Plan the run.</p> : t.agents.map((a) => (
+        <div key={a.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '6px 0' }}>
+          <Bot color={agentColor(a.id)} size={32} mode={a.state === 'running' ? 'm-work' : a.state === 'waiting' ? 'm-sleep' : ''} />
+          <div style={{ minWidth: 0 }}>
+            <b style={{ color: agentColor(a.id) }}>{a.id}</b> <span className="dim">{a.title} · {AGENT_STATE[a.state] ?? a.state}</span>
+            {a.lastReply && <div className="dim" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>{a.lastReply}</div>}
+          </div>
+        </div>))}
+      {t?.result && !t.result.pass && <pre className="dim" style={{ whiteSpace: 'pre-wrap', fontSize: 11, maxHeight: 90, overflow: 'auto' }}>{t.result.out}</pre>}
+    </div>
+  );
+}
 
 export function Home({ go, plan }: { go: Go; plan: () => void }) {
   const [blind, setBlind] = useState<Team | null>(null);
@@ -29,7 +52,7 @@ export function Home({ go, plan }: { go: Go; plan: () => void }) {
         <div className="hcopy">
           <span className="h5chip reveal"><span className="ldot" /><b>StaleBench</b> · Django · 3 Claude Haiku agents</span>
           <h1 className="reveal" style={{ '--i': 1 } as never}>Three agents, one function. <em>Without Loom they collide.</em></h1>
-          <p className="reveal" style={{ '--i': 2 } as never}>The stage shows three agents working without Loom. The Team page shows the same three with Loom, sharing a FalkorDB graph.</p>
+          <p className="reveal" style={{ '--i': 2 } as never}>On the right, both teams of three agents: what each is doing, and the test result when they finish. The Team page shows the Loom team's graph and messages.</p>
           <div className="hcta reveal" style={{ '--i': 3 } as never}>
             <button className="btn or lg" onClick={plan}>Plan the run →</button>
             <button className="btn ghost lg" onClick={() => go('bench')}>Benchmark</button>
@@ -40,9 +63,8 @@ export function Home({ go, plan }: { go: Go; plan: () => void }) {
           </div>
         </div>
         <div className="card h5stage reveal" style={{ '--i': 2 } as never}>
-          {blind ? <RunStage run={blind.id} label="without Loom · live" pollMs={1500} />
-            : loom ? <><RunStage run={loom.id} label="with Loom · live" pollMs={1500} /><p className="dim" style={{ padding: '0 16px 12px' }}>No without-Loom team has started, so this stage shows the team with Loom.</p></>
-            : <div className="floor" style={{ height: 380 }}><div className="empty" style={{ paddingTop: 70 }}><Bot color="#9A988F" size={56} mode="m-back" /><p style={{ marginTop: 10 }}><b>Nothing running</b></p><p className="dim">Press Plan the run. The Lead starts three agents without Loom, then three with it.</p></div></div>}
+          <TeamPanel title="Without Loom" t={blind} />
+          <TeamPanel title="With Loom" t={loom} />
         </div>
       </div></div>
     </section>
