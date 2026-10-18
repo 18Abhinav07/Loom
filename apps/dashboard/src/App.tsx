@@ -60,7 +60,7 @@ export function App() {
   return (
     <>
       <header className="top">
-        <div className="brand"><svg width="26" height="26" viewBox="0 0 26 26" fill="none"><path d="M4 7h18M4 13h18M4 19h18" stroke="#D9D6CB" strokeWidth="2" strokeLinecap="round" /><path d="M8 4v18M13 4v18M18 4v18" stroke="#D97757" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 2" /></svg>Loom</div>
+        <div className="brand"><img src="/logo.svg" width="28" height="28" alt="" />Loom</div>
         {cwd && <div className="proj" title={cwd}>repo <b>{base(cwd)}</b></div>}
         <nav className="tabs" ref={bar}>
           <div className="tabpill" style={pill} />

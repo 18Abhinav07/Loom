@@ -142,6 +142,7 @@ main{padding:22px 28px 60px;max-width:1520px;margin:0 auto}
 .ready .kpi b{font:600 16px var(--serif);display:block;line-height:1.1}
 .ready .kpi small{color:var(--ink3);font-size:11px}
 .hero2{padding:56px 0 40px;display:grid;grid-template-columns:minmax(0,760px);justify-content:center;text-align:center}
+.hlogo{display:block;margin:0 auto 14px}
 .hero2 h1{font:600 40px/1.15 var(--serif);letter-spacing:-.02em}
 .hero2 p{color:var(--ink2);font-size:15.5px;margin:12px auto 0;max-width:620px}
 .ask{margin-top:26px;text-align:left;padding:14px 14px 12px 18px;border-radius:18px;transition:border-color .2s,box-shadow .2s}

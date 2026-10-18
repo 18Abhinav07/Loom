@@ -1,4 +1,6 @@
-# Loom
+<p align="center"><img src="docs/img/logo.svg" width="120" alt="Loom logo"></p>
+
+<h1 align="center">Loom</h1>
 
 A shared, live world model for parallel Claude Code agents, kept in one FalkorDB graph.
 
