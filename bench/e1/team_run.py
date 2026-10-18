@@ -34,6 +34,10 @@ def ensure_repo() -> Path:
     if not (REPO / ".git").exists():
         REPO.parent.mkdir(parents=True, exist_ok=True)
         sh("git", "clone", "-q", "--shared", "--no-checkout", str(MIRROR), str(REPO), cwd=REPO.parent)
+    # the mirror is blobless; let this clone fetch a missing blob on demand (loom init diffs the first commit)
+    sh("git", "remote", "set-url", "origin", "https://github.com/django/django.git")
+    sh("git", "config", "remote.origin.promisor", "true")
+    sh("git", "config", "remote.origin.partialclonefilter", "blob:none")
     venv = REPO / ".loom" / "venv"
     if not venv.exists():
         venv.parent.mkdir(parents=True, exist_ok=True)
