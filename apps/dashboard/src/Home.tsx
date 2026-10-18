@@ -97,7 +97,6 @@ export function Home({ go, plan }: { go: Go; plan: () => void }) {
       </div>
         <div className="hgrid" style={{ display: 'flex', flexWrap: 'wrap', gap: 18, marginTop: 28 }}>
           <TeamDetail title="Without Loom: what the blind agents did" note="Three agents on the same code. No hooks, no leases, no messages: they cannot see each other." t={blind} />
-          <TeamDetail title="With Loom: what the connected agents did" note="Same three tasks. Loom locks functions, tells agents when code they call changes, and checks each change before it lands." t={loom} />
         </div></div>
     </section>
   );
