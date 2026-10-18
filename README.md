@@ -159,8 +159,8 @@ Re-index on edit over all of django (10702 symbols, base index 1.8 s): p50 5.6 m
 **Reading the E1 table.** Blind: B's code passes alone in 36/36 and breaks once merged in 36/36, so the conflict is real. Oracle:
 told the change, B merges cleanly in 36/36, so the task is solvable. Live Loom closes two thirds of the gap (24/36 merge; interference
 100% to 33%). By kind of change: **signature 12/12, rename 9/12, return-type 3/12**. Return-type changes are Loom's weak spot: the notice
-arrives with the before/after code, but Haiku often keeps its own code and does not adapt it (8 of the 12 live failures were repeats of
-this on helpers like `capfirst`, `escape`, `urlencode`). That is model compliance, not a missing notice; a stronger model or a Stop-gate
+arrives with the before/after code, but Haiku often keeps its own code and does not adapt it (9 of the 12 live failures were return-type changes, the same
+failure on helpers like `capfirst`, `escape`, `urlencode`). That is model compliance, not a missing notice; a stronger model or a Stop-gate
 that forces a re-run against the new behaviour is the next lever. The 36 pairs are constructed (12 real helpers x 3 mechanisms) and are a
 stress test, not a frequency estimate. One run per pair, Haiku only, so treat small differences as noise.
 
