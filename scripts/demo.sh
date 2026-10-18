@@ -44,6 +44,9 @@ if [ "$CHOICE" = live ]; then
   say "3/5 getting Django"
   [ -d "$DJANGO_DIR/.git" ] || git clone --depth 1000 https://github.com/django/django "$DJANGO_DIR"
   say "4/5 starting Loom on Django"
+  # the agents and the pass/fail verdict run Django's tests: give them a python with Django's own dependencies (macOS has no bare `python`)
+  [ -x "$DJANGO_DIR/.loom/venv/bin/python" ] || { mkdir -p "$DJANGO_DIR/.loom"; "$PY" -m venv "$DJANGO_DIR/.loom/venv"; }
+  "$DJANGO_DIR/.loom/venv/bin/pip" install -q "asgiref>=3.8" "sqlparse>=0.5"
   cd "$DJANGO_DIR"
   echo "Loom will index Django, open the dashboard and start the Lead."
   echo "In the dashboard press Plan: the Lead proposes the three tasks and runs them without Loom (Home) and with Loom (Team)."

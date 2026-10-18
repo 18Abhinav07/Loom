@@ -205,12 +205,33 @@ async function ensureDb(): Promise<number> {
   console.error('FalkorDB did not come up in 30s'); return 1;
 }
 
+/** The checkout's commit: a daemon started from older source must not keep serving after a pull (it ran a stale start_team and dropped blind). */
+const loomRev = () => { try { return git(loomRoot(), 'rev-parse', 'HEAD'); } catch { return ''; } };
+async function stopDaemon(): Promise<number> {
+  // Kill whatever answers on the port (it reports its pid), not only the pid file: a lost or stale pid file left orphans running.
+  const pf = join(HOME, 'daemon.pid');
+  const live = await fetch(`${DAEMON}/health`, { signal: AbortSignal.timeout(1000) }).then((r) => r.json() as Promise<{ pid?: number }>).catch(() => null);
+  const pids = [live?.pid, existsSync(pf) ? Number(readFileSync(pf, 'utf8')) : undefined].filter((p): p is number => Boolean(p));
+  rmSync(pf, { force: true });
+  if (!pids.length) { console.log('not running'); return 0; }
+  for (const p of pids) { try { process.kill(p); } catch { /* already gone */ } }
+  for (let i = 0; i < 20 && await healthy(); i++) await sleep(250);
+  if (await healthy()) { console.error(`daemon on ${DAEMON} did not stop`); return 1; }
+  console.log('stopped'); return 0;
+}
+
 async function ensureDaemon(): Promise<number> {
-  if (await healthy()) { console.log('already running'); return 0; }
+  if (await healthy()) {
+    const live = await fetch(`${DAEMON}/health`, { signal: AbortSignal.timeout(1000) }).then((r) => r.json() as Promise<{ rev?: string }>).catch(() => null);
+    const rev = loomRev();
+    if (!rev || live?.rev === rev) { console.log('already running'); return 0; }
+    console.log('the running daemon is from an older build of Loom; restarting it');
+    if (await stopDaemon()) return 1;
+  }
   mkdirSync(HOME, { recursive: true });
   const log = openSync(join(HOME, 'daemon.log'), 'a');
   const p = spawn(process.execPath, [join(loomRoot(), 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(loomRoot(), 'packages', 'daemon', 'src', 'server.ts')],
-    { detached: true, stdio: ['ignore', log, log], cwd: loomRoot() });
+    { detached: true, stdio: ['ignore', log, log], cwd: loomRoot(), env: { ...process.env, LOOM_REV: loomRev() } });
   p.unref();
   writeFileSync(join(HOME, 'daemon.pid'), String(p.pid));
   for (let i = 0; i < 20; i++) { if (await healthy()) { console.log(`loom daemon up on ${DAEMON} (pid ${p.pid})`); return 0; } await sleep(500); }
@@ -264,18 +285,7 @@ export async function main(argv: string[]): Promise<number> {
     });
   }
   if (cmd === 'up') return (await ensureDb()) || ensureDaemon();
-  if (cmd === 'down') {
-    // Kill whatever answers on the port (it reports its pid), not only the pid file: a lost or stale pid file left orphans running.
-    const pf = join(HOME, 'daemon.pid');
-    const live = await fetch(`${DAEMON}/health`, { signal: AbortSignal.timeout(1000) }).then((r) => r.json() as Promise<{ pid?: number }>).catch(() => null);
-    const pids = [live?.pid, existsSync(pf) ? Number(readFileSync(pf, 'utf8')) : undefined].filter((p): p is number => Boolean(p));
-    rmSync(pf, { force: true });
-    if (!pids.length) { console.log('not running'); return 0; }
-    for (const p of pids) { try { process.kill(p); } catch { /* already gone */ } }
-    for (let i = 0; i < 20 && await healthy(); i++) await sleep(250);
-    if (await healthy()) { console.error(`daemon on ${DAEMON} did not stop`); return 1; }
-    console.log('stopped'); return 0;
-  }
+  if (cmd === 'down') return stopDaemon();
   if (cmd === 'status') {
     const at = resolveAttach(process.cwd());
     if (!at) { console.error('not a loom repo (run loom init)'); return 1; }

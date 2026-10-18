@@ -188,7 +188,7 @@ export async function startServer(opts: { port: number; db: LoomDb; uiPort?: num
       if (refused) return send(403, { error: refused });
       const u = new URL(req.url ?? '/', 'http://x');
       const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-      if (req.method === 'GET' && u.pathname === '/health') return send(200, { ok: true, runs: runs.size, readOnly: Boolean(opts.readOnly), pid: process.pid });
+      if (req.method === 'GET' && u.pathname === '/health') return send(200, { ok: true, runs: runs.size, readOnly: Boolean(opts.readOnly), pid: process.pid, rev: process.env.LOOM_REV ?? '' });
       const view = await viewRoute(u, parts, req);
       if (view) return send(view.status, view.body);
       if (parts[0] === 'events' || parts[0] === 'sessions' || parts[0] === 'channels') {   // B3: the lead/session surface; machine token required

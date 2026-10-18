@@ -7,12 +7,15 @@ export const SUFFIX_BLIND = "\n\nYou are one of several agents working in parall
   + 'same time, and all changes will be merged together when everyone finishes. Do not commit; your work is committed when you finish.';
 export const SUFFIX_TEAM = SUFFIX.replace('Loom commits your work when you finish.',
   'Loom commits your work and lands it on the shared branch when you finish; if it cannot land, you are told the reason.');
-const TOOLS = ['Edit', 'Write', 'MultiEdit', 'Read', 'Grep', 'Glob', 'Bash(git:*)', 'Bash(python:*)', 'Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'mcp__loom__*'];
+const TOOLS = ['Edit', 'Write', 'MultiEdit', 'Read', 'Grep', 'Glob', 'Bash(git:*)', 'Bash(python:*)', 'Bash(python3:*)', 'Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'mcp__loom__*'];
 /** The command word of a shell line: the first token that is not a VAR=value assignment. */
 const word = (cmd: string) => cmd.trim().split(/\s+/).find((t) => !/^\w+=/.test(t));
+const PLUMBING = new Set(['tail', 'head', 'echo', 'true', 'false']);
 /** What a worker may run: the base tools plus the plan's test and compile commands. Blind workers get no Loom tools. */
 export function allowedTools(o: { test?: string | null; compile?: string | null; blind?: boolean }): string[] {
-  const extra = [o.test, o.compile].map((c) => (c ? word(c) : undefined)).filter((w): w is string => !!w).map((w) => `Bash(${w}:*)`);
+  // every command in a `cd x && A=1 prog args | tail` line, not just the first word: python3 in that line must be allowed too
+  const words = (c?: string | null) => (c ?? '').split(/&&|\|\||;|\|/).map(word).filter((w): w is string => !!w && !PLUMBING.has(w));
+  const extra = [...words(o.test), ...words(o.compile)].map((w) => `Bash(${w}:*)`);
   return [...new Set([...TOOLS, ...extra])].filter((t) => !(o.blind && t.startsWith('mcp__')));
 }
 /** A worker waiting along a chain of holders (A, then B, then C) is resumed once per landing. */

@@ -41,6 +41,7 @@ export function Home({ go, plan }: { go: Go; plan: () => void }) {
         </div>
         <div className="card h5stage reveal" style={{ '--i': 2 } as never}>
           {blind ? <RunStage run={blind.id} label="without Loom · live" pollMs={1500} />
+            : loom ? <><RunStage run={loom.id} label="with Loom · live" pollMs={1500} /><p className="dim" style={{ padding: '0 16px 12px' }}>No without-Loom team has started, so this stage shows the team with Loom.</p></>
             : <div className="floor" style={{ height: 380 }}><div className="empty" style={{ paddingTop: 70 }}><Bot color="#9A988F" size={56} mode="m-back" /><p style={{ marginTop: 10 }}><b>Nothing running</b></p><p className="dim">Press Plan the run. The Lead starts three agents without Loom, then three with it.</p></div></div>}
         </div>
       </div></div>

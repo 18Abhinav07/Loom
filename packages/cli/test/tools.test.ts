@@ -14,6 +14,11 @@ describe('allowedTools', () => {
   it('skips leading env assignments', () => {
     expect(allowedTools({ test: 'FOO=1 make test' })).toContain('Bash(make:*)');
   });
+  it('allows python3 (macOS has no python) and every command in a cd && ... | tail test line', () => {
+    const t = allowedTools({ test: 'cd tests && PYTHONPATH=.. python3 runtests.py utils_tests --parallel 1 2>&1 | tail -15' });
+    expect(t).toContain('Bash(python3:*)');
+    expect(t).not.toContain('Bash(tail:*)');
+  });
   it('blind agents get no mcp tools', () => {
     expect(allowedTools({ blind: true }).some((x) => x.startsWith('mcp__'))).toBe(false);
   });

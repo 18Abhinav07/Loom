@@ -2,7 +2,7 @@
 // Any number of agents: N tasks make N agents; `after` orders them, nothing else caps them.
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import { subscriptionEnv } from '@loom/core';
 import { appendEvent, ulid } from '@loom/memory';
 import { parseTeamPlan, type TeamPlan, type TeamTask } from '@loom/planner';
@@ -31,6 +31,12 @@ type Ok = { ok: boolean; error?: string };
 const ID = ['-c', 'user.email=loom@local', '-c', 'user.name=loom'];
 const git = (cwd: string, ...a: string[]) => execFileSync('git', [...ID, ...a], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const TERMINAL: AgentState[] = ['landed', 'failed', 'stopped', 'blocked'];
+
+/** A repo's own `.loom/venv` (its python and the deps its tests need) goes first on PATH for agents and the verdict, for blind and Loom teams alike. */
+export function withVenv(env: NodeJS.ProcessEnv, repo: string): NodeJS.ProcessEnv {
+  const bin = join(repo, '.loom', 'venv', 'bin');
+  return existsSync(bin) ? { ...env, PATH: `${bin}${delimiter}${env.PATH ?? ''}`, VIRTUAL_ENV: join(repo, '.loom', 'venv') } : env;
+}
 
 export class Team {
   readonly id = ulid();
@@ -115,7 +121,7 @@ export class Team {
     const p = new AgentProc({ id: a.t.id, cwd: a.wt, prompt, bin: this.d.bin, model: this.o.model, resume, traceFile: trace,
       allowed: allowedTools({ test: this.test, compile: this.compile, blind: this.o.blind }),
       mcpConfig: this.d.mcpPath && !this.o.blind ? join(a.wt, '.loom-mcp.json') : undefined,
-      env: this.o.blind ? subscriptionEnv(process.env) : { ...subscriptionEnv(process.env), LOOM_RUN: this.id, LOOM_AGENT: a.t.id, LOOM_URL: this.d.url ?? '' } });
+      env: this.o.blind ? withVenv(subscriptionEnv(process.env), this.o.repo) : { ...withVenv(subscriptionEnv(process.env), this.o.repo), LOOM_RUN: this.id, LOOM_AGENT: a.t.id, LOOM_URL: this.d.url ?? '' } });
     a.proc = p; a.state = 'running';
     p.on('reply', (text: string) => { a.lastReply = text; this.d.onAgentEvent?.(this.id, a.t.id, text); });
     p.on('result', (r: { ok: boolean; sessionId?: string }) => {
@@ -176,7 +182,7 @@ export class Team {
       git(this.o.repo, 'worktree', 'add', '--detach', dir, this.landed);
       const r = await new Promise<{ pass: boolean; out: string }>((res) => {
         let out = '';
-        const p = spawn('sh', ['-c', this.test!], { cwd: dir, env: { ...process.env, PYTHONPATH: dir } });
+        const p = spawn('bash', ['-o', 'pipefail', '-c', this.test!], { cwd: dir, env: { ...withVenv(process.env, this.o.repo), PYTHONPATH: dir } });   // pipefail: `... | tail` must not hide a failing exit code
         p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { out += d; });
         const t = setTimeout(() => p.kill('SIGKILL'), 120_000);
         p.on('close', (c) => { clearTimeout(t); res({ pass: c === 0, out: out.slice(-1200) }); });

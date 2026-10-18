@@ -85,3 +85,13 @@ test('a blind team gets no hooks, no Loom tools and the blind prompt, and still 
   expect(existsSync(join(wt, '.claude', 'settings.local.json'))).toBe(false);
   expect(readFileSync(join(wt, readdirSync(wt).find((f) => f.startsWith('fake-'))!), 'utf8')).toContain('may be changing shared code');
 }, 30_000);
+
+test('the verdict fails when the plan test fails inside a pipe (| tail hid the exit code)', async () => {
+  const r = repo();
+  const p = plan(r, 'pipe', [{ id: 'a' }]);
+  writeFileSync(p, readFileSync(p, 'utf8').replace('goal: test pipe', 'goal: test pipe\ntest: "echo boom; false | tail -1"'));
+  const t = await Team.start({ routes, bin: BIN, pollMs: 100 }, { repo: r, planPath: p, person: 'ann@x', leadSid: 'LEAD' });
+  runs.push(t.id);
+  const v = await t.done();
+  expect(v.result?.pass).toBe(false);
+}, 30_000);

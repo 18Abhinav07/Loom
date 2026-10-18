@@ -6,7 +6,7 @@
     "loom": "dist/loom.cjs"
   },
   "scripts": {
-    "build": "esbuild src/loom.ts --bundle --platform=node --target=node22 --format=cjs --external:falkordb --external:web-tree-sitter --external:tree-sitter-wasms --banner:js=\"#!/usr/bin/env node\" --outfile=dist/loom.cjs && chmod +x dist/loom.cjs"
+    "build": "esbuild src/loom.ts --bundle --platform=node --target=node22 --format=cjs --external:falkordb --external:web-tree-sitter --external:tree-sitter-wasms --define:import.meta.url=undefined --banner:js=\"#!/usr/bin/env node\" --outfile=dist/loom.cjs && chmod +x dist/loom.cjs"
   },
   "dependencies": {
     "@loom/core": "workspace:*",

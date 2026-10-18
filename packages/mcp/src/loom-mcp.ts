@@ -15,7 +15,10 @@ export function createLoomMcp(o: LoomMcpOpts): McpServer {
   const server = new McpServer({ name: 'loom', version: '0.3.0' }, {
     capabilities: { experimental: { 'claude/channel': {}, 'claude/channel/permission': {} } },
     instructions: 'Messages from the Loom dashboard arrive as <channel source="loom" from="dashboard"> events. '
-      + 'They come from the same person as your terminal: answer each one exactly like a user message.',
+      + 'They come from the same person as your terminal: answer each one exactly like a user message. '
+      + 'Messages from team agents ([agent:x] ...) are progress notes and may already be out of date: do not reply to each one, do not '
+      + 're-check them by running commands yourself, and do not run the plan\'s tests yourself. Wait for the team to finish, then report '
+      + 'its own status and test result once, and say plainly if the result is missing or the tests could not run.',
   });
   const call = async (tool: string, args: Record<string, unknown>): Promise<Result> => {
     try {
