@@ -1,22 +1,98 @@
 {
   "pairs": [
     {
+      "id": "base36_to_int__rename",
+      "func": "base36_to_int",
+      "mech": "rename",
+      "change": "renames it (old name gone)",
+      "blind": {
+        "broke": true,
+        "seconds": 22.7,
+        "error": "NameError: name 'base36_to_int' is not defined. Did you mean: 'base36_to_int_v2'?"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 39.4,
+        "passed": "Ran 48 tests",
+        "a_changed_s": 9.1,
+        "told_s": 13.3,
+        "notice": "[loom] agent A changed base36_to_int in django/utils/http.py (removed, in progress, not in your checkout yet)"
+      }
+    },
+    {
       "id": "base36_to_int__rettype",
       "func": "base36_to_int",
       "mech": "rettype",
       "change": "changes what it returns",
       "blind": {
         "broke": true,
-        "seconds": 14.5,
-        "error": "AssertionError: <django.utils.http._CoordT object at 0x1088c94b0> != 12345"
+        "seconds": 19.2,
+        "error": "AssertionError: <django.utils.http._CoordT object at 0x10a0aae30> != 12345"
       },
       "live": {
         "broke": true,
-        "seconds": 18.8,
-        "error": "AssertionError: <django.utils.http._CoordT object at 0x1071798a0> != 12345",
-        "a_changed_s": 9.3,
-        "told_s": 9.8,
+        "seconds": 29.8,
+        "error": "AssertionError: <django.utils.http._CoordT object at 0x10587ed70> != 12345",
+        "a_changed_s": 10.2,
+        "told_s": 16.1,
         "notice": "[loom] agent A changed base36_to_int in django/utils/http.py (behavior, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "base36_to_int__signature",
+      "func": "base36_to_int",
+      "mech": "signature",
+      "change": "adds a required `strict` argument",
+      "blind": {
+        "broke": true,
+        "seconds": 19.8,
+        "error": "TypeError: base36_to_int() missing 1 required keyword-only argument: 'strict'"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 26.1,
+        "passed": "Ran 48 tests",
+        "a_changed_s": 8.1,
+        "told_s": 10.5,
+        "notice": "[loom] agent A changed base36_to_int in django/utils/http.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "capfirst__rename",
+      "func": "capfirst",
+      "mech": "rename",
+      "change": "renames it (old name gone)",
+      "blind": {
+        "broke": true,
+        "seconds": 19.4,
+        "error": "NameError: name 'capfirst' is not defined. Did you mean: 'capfirst_v2'?"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 35.2,
+        "passed": "Ran 20 tests",
+        "a_changed_s": 10.6,
+        "told_s": 13.1,
+        "notice": "[loom] agent A changed capfirst in django/utils/text.py (removed, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "capfirst__rettype",
+      "func": "capfirst",
+      "mech": "rettype",
+      "change": "changes what it returns",
+      "blind": {
+        "broke": true,
+        "seconds": 15.4,
+        "error": "TypeError: sequence item 0: expected str instance, _CoordT found"
+      },
+      "live": {
+        "broke": true,
+        "seconds": 22.1,
+        "error": "TypeError: sequence item 0: expected str instance, _CoordT found",
+        "a_changed_s": 7.3,
+        "told_s": 9.4,
+        "notice": "[loom] agent A changed capfirst in django/utils/text.py (contract, in progress, not in your checkout yet)"
       }
     },
     {
@@ -26,16 +102,54 @@
       "change": "adds a required `strict` argument",
       "blind": {
         "broke": true,
-        "seconds": 19.7,
+        "seconds": 19.9,
         "error": "TypeError: capfirst() missing 1 required keyword-only argument: 'strict'"
       },
       "live": {
         "broke": false,
-        "seconds": 21.1,
+        "seconds": 29.4,
         "passed": "Ran 20 tests",
-        "a_changed_s": 7.5,
-        "told_s": 12.2,
+        "a_changed_s": 9.3,
+        "told_s": 11.3,
         "notice": "[loom] agent A changed capfirst in django/utils/text.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "escape__rename",
+      "func": "escape",
+      "mech": "rename",
+      "change": "renames it (old name gone)",
+      "blind": {
+        "broke": true,
+        "seconds": 17.5,
+        "error": "NameError: name 'escape' is not defined. Did you mean: 'escapejs'?"
+      },
+      "live": {
+        "broke": true,
+        "seconds": 45.0,
+        "error": "NameError: name 'escape' is not defined. Did you mean: 'escapejs'?",
+        "a_changed_s": 12.4,
+        "told_s": 16.5,
+        "notice": "[loom] agent A changed escape in django/utils/html.py (removed, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "escape__rettype",
+      "func": "escape",
+      "mech": "rettype",
+      "change": "changes what it returns",
+      "blind": {
+        "broke": true,
+        "seconds": 17.0,
+        "error": "AssertionError: 'title=\"<django.utils.html._CoordT object at 0x1094aa590>\"' != 'title=\"&lt;x&gt;\"'"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 25.1,
+        "passed": "Ran 24 tests",
+        "a_changed_s": 8.4,
+        "told_s": 11.0,
+        "notice": "[loom] agent A changed escape in django/utils/html.py (contract, in progress, not in your checkout yet)"
       }
     },
     {
@@ -45,16 +159,53 @@
       "change": "adds a required `strict` argument",
       "blind": {
         "broke": true,
-        "seconds": 14.7,
+        "seconds": 20.1,
         "error": "TypeError: escape() missing 1 required keyword-only argument: 'strict'"
       },
       "live": {
         "broke": false,
-        "seconds": 26.2,
+        "seconds": 29.5,
         "passed": "Ran 24 tests",
-        "a_changed_s": 11.7,
-        "told_s": 14.6,
+        "a_changed_s": 11.3,
+        "told_s": 14.0,
         "notice": "[loom] agent A changed escape in django/utils/html.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "get_text_list__rename",
+      "func": "get_text_list",
+      "mech": "rename",
+      "change": "renames it (old name gone)",
+      "blind": {
+        "broke": true,
+        "seconds": 22.5,
+        "error": "NameError: name 'get_text_list' is not defined. Did you mean: 'get_text_list_v2'?"
+      },
+      "live": {
+        "broke": true,
+        "seconds": 18.4,
+        "error": "NameError: name 'get_text_list' is not defined. Did you mean: 'get_text_list_v2'?",
+        "a_changed_s": null,
+        "told_s": null
+      }
+    },
+    {
+      "id": "get_text_list__rettype",
+      "func": "get_text_list",
+      "mech": "rettype",
+      "change": "changes what it returns",
+      "blind": {
+        "broke": true,
+        "seconds": 15.7,
+        "error": "AssertionError: <django.utils.text._CoordT object at 0x10aea2710> != 'apple, pear or plum'"
+      },
+      "live": {
+        "broke": true,
+        "seconds": 24.3,
+        "error": "AssertionError: <django.utils.text._CoordT object at 0x10a591570> != 'apple, pear or plum'",
+        "a_changed_s": 8.2,
+        "told_s": 11.3,
+        "notice": "[loom] agent A changed get_text_list in django/utils/text.py (contract, in progress, not in your checkout yet)"
       }
     },
     {
@@ -64,16 +215,35 @@
       "change": "adds a required `strict` argument",
       "blind": {
         "broke": true,
-        "seconds": 18.1,
+        "seconds": 21.6,
         "error": "TypeError: get_text_list() missing 1 required keyword-only argument: 'strict'"
       },
       "live": {
         "broke": false,
-        "seconds": 27.0,
+        "seconds": 32.1,
         "passed": "Ran 20 tests",
-        "a_changed_s": 12.4,
-        "told_s": 15.4,
+        "a_changed_s": 10.2,
+        "told_s": 13.5,
         "notice": "[loom] agent A changed get_text_list in django/utils/text.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "get_valid_filename__rename",
+      "func": "get_valid_filename",
+      "mech": "rename",
+      "change": "renames it (old name gone)",
+      "blind": {
+        "broke": true,
+        "seconds": 20.2,
+        "error": "NameError: name 'get_valid_filename' is not defined. Did you mean: 'get_valid_filename_v2'?"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 36.0,
+        "passed": "Ran 20 tests",
+        "a_changed_s": 12.3,
+        "told_s": 13.5,
+        "notice": "[loom] agent A changed get_valid_filename in django/utils/text.py (removed, in progress, not in your checkout yet)"
       }
     },
     {
@@ -83,16 +253,54 @@
       "change": "changes what it returns",
       "blind": {
         "broke": true,
-        "seconds": 12.0,
-        "error": "AssertionError: 'doc_<django.utils.text._CoordT object at 0x106b40be0>' != 'doc_my_file.txt'"
+        "seconds": 21.1,
+        "error": "TypeError: can only concatenate str (not \"_CoordT\") to str"
       },
       "live": {
         "broke": true,
-        "seconds": 20.4,
-        "error": "AssertionError: 'doc_<django.utils.text._CoordT object at 0x10a7e0be0>' != 'doc_my_file.txt'",
-        "a_changed_s": 10.2,
-        "told_s": 11.1,
+        "seconds": 28.8,
+        "error": "TypeError: can only concatenate str (not \"_CoordT\") to str",
+        "a_changed_s": 10.1,
+        "told_s": 12.8,
         "notice": "[loom] agent A changed get_valid_filename in django/utils/text.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "get_valid_filename__signature",
+      "func": "get_valid_filename",
+      "mech": "signature",
+      "change": "adds a required `strict` argument",
+      "blind": {
+        "broke": true,
+        "seconds": 16.6,
+        "error": "TypeError: get_valid_filename() missing 1 required keyword-only argument: 'strict'"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 23.9,
+        "passed": "Ran 20 tests",
+        "a_changed_s": 8.1,
+        "told_s": 8.7,
+        "notice": "[loom] agent A changed get_valid_filename in django/utils/text.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "int_to_base36__rename",
+      "func": "int_to_base36",
+      "mech": "rename",
+      "change": "renames it (old name gone)",
+      "blind": {
+        "broke": true,
+        "seconds": 11.2,
+        "error": "NameError: name 'int_to_base36' is not defined. Did you mean: 'int_to_base36_v2'?"
+      },
+      "live": {
+        "broke": true,
+        "seconds": 27.3,
+        "error": "NameError: name 'int_to_base36' is not defined. Did you mean: 'int_to_base36_v2'?",
+        "a_changed_s": 8.2,
+        "told_s": 11.0,
+        "notice": "[loom] agent A changed int_to_base36 in django/utils/http.py (removed, in progress, not in your checkout yet)"
       }
     },
     {
@@ -102,16 +310,73 @@
       "change": "changes what it returns",
       "blind": {
         "broke": true,
-        "seconds": 12.8,
+        "seconds": 17.3,
+        "error": "AssertionError: 'tok_<django.utils.http._CoordT object at 0x1091a6f20>' != 'tok_9ix'"
+      },
+      "live": {
+        "broke": true,
+        "seconds": 24.2,
+        "error": "AssertionError: 'tok_<django.utils.http._CoordT object at 0x1080aecb0>' != 'tok_9ix'",
+        "a_changed_s": 9.2,
+        "told_s": 11.1,
+        "notice": "[loom] agent A changed int_to_base36 in django/utils/http.py (behavior, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "int_to_base36__signature",
+      "func": "int_to_base36",
+      "mech": "signature",
+      "change": "adds a required `strict` argument",
+      "blind": {
+        "broke": true,
+        "seconds": 14.9,
+        "error": "TypeError: int_to_base36() missing 1 required keyword-only argument: 'strict'"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 27.1,
+        "passed": "Ran 48 tests",
+        "a_changed_s": 7.3,
+        "told_s": 10.3,
+        "notice": "[loom] agent A changed int_to_base36 in django/utils/http.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "iri_to_uri__rename",
+      "func": "iri_to_uri",
+      "mech": "rename",
+      "change": "renames it (old name gone)",
+      "blind": {
+        "broke": true,
+        "seconds": 15.6,
+        "error": "NameError: name 'iri_to_uri' is not defined. Did you mean: 'uri_to_iri'?"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 29.8,
+        "passed": "Ran 17 tests",
+        "a_changed_s": 10.3,
+        "told_s": 12.8,
+        "notice": "[loom] agent A changed iri_to_uri in django/utils/encoding.py (removed, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "iri_to_uri__rettype",
+      "func": "iri_to_uri",
+      "mech": "rettype",
+      "change": "changes what it returns",
+      "blind": {
+        "broke": true,
+        "seconds": 16.7,
         "error": "TypeError: can only concatenate str (not \"_CoordT\") to str"
       },
       "live": {
         "broke": true,
-        "seconds": 17.2,
+        "seconds": 28.7,
         "error": "TypeError: can only concatenate str (not \"_CoordT\") to str",
-        "a_changed_s": 7.2,
-        "told_s": 10.8,
-        "notice": "[loom] agent A changed int_to_base36 in django/utils/http.py (behavior, in progress, not in your checkout yet)"
+        "a_changed_s": 8.4,
+        "told_s": 10.4,
+        "notice": "[loom] agent A changed iri_to_uri in django/utils/encoding.py (behavior, in progress, not in your checkout yet)"
       }
     },
     {
@@ -121,16 +386,35 @@
       "change": "adds a required `strict` argument",
       "blind": {
         "broke": true,
-        "seconds": 14.8,
+        "seconds": 13.4,
         "error": "TypeError: iri_to_uri() missing 1 required keyword-only argument: 'strict'"
       },
       "live": {
         "broke": false,
-        "seconds": 17.4,
+        "seconds": 20.3,
         "passed": "Ran 17 tests",
         "a_changed_s": 7.3,
-        "told_s": 9.0,
+        "told_s": 8.0,
         "notice": "[loom] agent A changed iri_to_uri in django/utils/encoding.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "normalize_newlines__rename",
+      "func": "normalize_newlines",
+      "mech": "rename",
+      "change": "renames it (old name gone)",
+      "blind": {
+        "broke": true,
+        "seconds": 20.1,
+        "error": "NameError: name 'normalize_newlines' is not defined. Did you mean: 'normalize_newlines_v2'?"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 32.1,
+        "passed": "Ran 20 tests",
+        "a_changed_s": 7.4,
+        "told_s": 8.5,
+        "notice": "[loom] agent A changed normalize_newlines in django/utils/text.py (removed, in progress, not in your checkout yet)"
       }
     },
     {
@@ -140,15 +424,34 @@
       "change": "changes what it returns",
       "blind": {
         "broke": true,
-        "seconds": 13.0,
+        "seconds": 17.3,
         "error": "AttributeError: '_CoordT' object has no attribute 'split'"
       },
       "live": {
+        "broke": true,
+        "seconds": 37.6,
+        "error": "AttributeError: '_CoordT' object has no attribute 'split'",
+        "a_changed_s": 10.1,
+        "told_s": 15.4,
+        "notice": "[loom] agent A changed normalize_newlines in django/utils/text.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "normalize_newlines__signature",
+      "func": "normalize_newlines",
+      "mech": "signature",
+      "change": "adds a required `strict` argument",
+      "blind": {
+        "broke": true,
+        "seconds": 18.1,
+        "error": "TypeError: normalize_newlines() missing 1 required keyword-only argument: 'strict'"
+      },
+      "live": {
         "broke": false,
-        "seconds": 26.9,
+        "seconds": 26.4,
         "passed": "Ran 20 tests",
-        "a_changed_s": 12.2,
-        "told_s": 14.9,
+        "a_changed_s": 10.1,
+        "told_s": 13.5,
         "notice": "[loom] agent A changed normalize_newlines in django/utils/text.py (contract, in progress, not in your checkout yet)"
       }
     },
@@ -159,16 +462,54 @@
       "change": "renames it (old name gone)",
       "blind": {
         "broke": true,
-        "seconds": 14.0,
+        "seconds": 17.8,
         "error": "NameError: name 'phone2numeric' is not defined. Did you mean: 'phone2numeric_v2'?"
       },
       "live": {
         "broke": false,
-        "seconds": 23.9,
+        "seconds": 28.3,
         "passed": "Ran 20 tests",
-        "a_changed_s": 9.3,
-        "told_s": 9.6,
+        "a_changed_s": 8.3,
+        "told_s": 12.4,
         "notice": "[loom] agent A changed phone2numeric in django/utils/text.py (removed, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "phone2numeric__rettype",
+      "func": "phone2numeric",
+      "mech": "rettype",
+      "change": "changes what it returns",
+      "blind": {
+        "broke": true,
+        "seconds": 20.5,
+        "error": "AssertionError: <django.utils.text._CoordT object at 0x10b746530> != '8002655328'"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 26.2,
+        "passed": "Ran 20 tests",
+        "a_changed_s": 7.1,
+        "told_s": 8.9,
+        "notice": "[loom] agent A changed phone2numeric in django/utils/text.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "phone2numeric__signature",
+      "func": "phone2numeric",
+      "mech": "signature",
+      "change": "adds a required `strict` argument",
+      "blind": {
+        "broke": true,
+        "seconds": 15.8,
+        "error": "TypeError: phone2numeric() missing 1 required keyword-only argument: 'strict'"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 39.8,
+        "passed": "Ran 20 tests",
+        "a_changed_s": 12.2,
+        "told_s": 20.1,
+        "notice": "[loom] agent A changed phone2numeric in django/utils/text.py (contract, in progress, not in your checkout yet)"
       }
     },
     {
@@ -178,16 +519,53 @@
       "change": "renames it (old name gone)",
       "blind": {
         "broke": true,
-        "seconds": 15.9,
+        "seconds": 16.1,
         "error": "NameError: name 'slugify' is not defined. Did you mean: 'slugify_v2'?"
       },
       "live": {
         "broke": false,
-        "seconds": 26.1,
+        "seconds": 33.1,
         "passed": "Ran 20 tests",
-        "a_changed_s": 8.3,
-        "told_s": 8.6,
+        "a_changed_s": 11.2,
+        "told_s": 14.3,
         "notice": "[loom] agent A changed slugify in django/utils/text.py (removed, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "slugify__rettype",
+      "func": "slugify",
+      "mech": "rettype",
+      "change": "changes what it returns",
+      "blind": {
+        "broke": true,
+        "seconds": 17.7,
+        "error": "AssertionError: '<django.utils.text._CoordT object at 0x108be5f90>.txt' != 'hello-world.txt'"
+      },
+      "live": {
+        "broke": true,
+        "seconds": 18.0,
+        "error": "AssertionError: '<django.utils.text._CoordT object at 0x10825b040>.txt' != 'hello-world.txt'",
+        "a_changed_s": 10.1,
+        "told_s": null
+      }
+    },
+    {
+      "id": "slugify__signature",
+      "func": "slugify",
+      "mech": "signature",
+      "change": "adds a required `strict` argument",
+      "blind": {
+        "broke": true,
+        "seconds": 17.8,
+        "error": "TypeError: slugify() missing 1 required keyword-only argument: 'strict'"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 39.2,
+        "passed": "Ran 20 tests",
+        "a_changed_s": 10.3,
+        "told_s": 13.4,
+        "notice": "[loom] agent A changed slugify in django/utils/text.py (contract, in progress, not in your checkout yet)"
       }
     },
     {
@@ -197,16 +575,54 @@
       "change": "renames it (old name gone)",
       "blind": {
         "broke": true,
-        "seconds": 13.1,
+        "seconds": 14.7,
         "error": "NameError: name 'strip_tags' is not defined. Did you mean: 'strip_tags_v2'?"
       },
       "live": {
         "broke": false,
-        "seconds": 29.5,
+        "seconds": 34.2,
         "passed": "Ran 24 tests",
-        "a_changed_s": 10.2,
-        "told_s": 13.3,
+        "a_changed_s": 10.1,
+        "told_s": 13.6,
         "notice": "[loom] agent A changed strip_tags in django/utils/html.py (removed, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "strip_tags__rettype",
+      "func": "strip_tags",
+      "mech": "rettype",
+      "change": "changes what it returns",
+      "blind": {
+        "broke": true,
+        "seconds": 15.2,
+        "error": "TypeError: '_CoordT' object is not subscriptable"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 31.6,
+        "passed": "Ran 24 tests",
+        "a_changed_s": 11.1,
+        "told_s": 14.7,
+        "notice": "[loom] agent A changed strip_tags in django/utils/html.py (contract, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "strip_tags__signature",
+      "func": "strip_tags",
+      "mech": "signature",
+      "change": "adds a required `strict` argument",
+      "blind": {
+        "broke": true,
+        "seconds": 20.1,
+        "error": "TypeError: strip_tags() missing 1 required keyword-only argument: 'strict'"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 23.4,
+        "passed": "Ran 24 tests",
+        "a_changed_s": 8.2,
+        "told_s": 10.4,
+        "notice": "[loom] agent A changed strip_tags in django/utils/html.py (contract, in progress, not in your checkout yet)"
       }
     },
     {
@@ -216,19 +632,57 @@
       "change": "renames it (old name gone)",
       "blind": {
         "broke": true,
-        "seconds": 16.9,
+        "seconds": 16.3,
         "error": "NameError: name 'urlencode' is not defined. Did you mean: 'urlencode_v2'?"
       },
       "live": {
-        "broke": true,
-        "seconds": 22.6,
-        "error": "NameError: name 'urlencode' is not defined. Did you mean: 'urlencode_v2'?",
-        "a_changed_s": 5.3,
-        "told_s": 5.6,
+        "broke": false,
+        "seconds": 33.9,
+        "passed": "Ran 48 tests",
+        "a_changed_s": 9.5,
+        "told_s": 12.5,
         "notice": "[loom] agent A changed urlencode in django/utils/http.py (removed, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "urlencode__rettype",
+      "func": "urlencode",
+      "mech": "rettype",
+      "change": "changes what it returns",
+      "blind": {
+        "broke": true,
+        "seconds": 15.9,
+        "error": "TypeError: can only concatenate str (not \"_CoordT\") to str"
+      },
+      "live": {
+        "broke": true,
+        "seconds": 24.9,
+        "error": "TypeError: can only concatenate str (not \"_CoordT\") to str",
+        "a_changed_s": 9.4,
+        "told_s": 11.6,
+        "notice": "[loom] agent A changed urlencode in django/utils/http.py (behavior, in progress, not in your checkout yet)"
+      }
+    },
+    {
+      "id": "urlencode__signature",
+      "func": "urlencode",
+      "mech": "signature",
+      "change": "adds a required `strict` argument",
+      "blind": {
+        "broke": true,
+        "seconds": 16.3,
+        "error": "TypeError: urlencode() missing 1 required keyword-only argument: 'strict'"
+      },
+      "live": {
+        "broke": false,
+        "seconds": 44.5,
+        "passed": "Ran 48 tests",
+        "a_changed_s": 22.6,
+        "told_s": 27.1,
+        "notice": "[loom] agent A changed urlencode in django/utils/http.py (contract, in progress, not in your checkout yet)"
       }
     }
   ],
   "model": "haiku",
-  "records": "runs/e1/20261018-123802"
+  "records": "runs/e1/20261018-142825"
 }

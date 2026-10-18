@@ -16,7 +16,20 @@ git clone https://github.com/18Abhinav07/Loom.git && cd Loom
 
 This puts a `loom` command on your PATH.
 
-**One command:** after cloning, `./scripts/demo.sh` checks your machine, installs Loom, asks what to run (live Django demo, or StaleBench 12 / 36 / 108), opens the dashboard and starts it. `./scripts/demo.sh live|12|36|108` skips the menu; `MODEL=sonnet` changes the model. The steps below are what it does.
+**One command:** after cloning, `./scripts/demo.sh` checks your machine, installs Loom, asks what to run, opens the dashboard and starts it.
+`./scripts/demo.sh live|12|36|108` skips the menu. `MODEL=haiku|sonnet` picks the model (Haiku default), `YES=1` skips the cost prompt.
+Every option runs real Claude agents on your own Claude plan; nothing is simulated.
+
+| Option | What it runs | Agent runs | Time / cost (Haiku) | Output |
+|---|---|---|---|---|
+| **live** | The Django demo: 4 agents without Loom, then the same 4 with Loom. You press **Plan** in the dashboard and watch locks, notices and messages. | 8 | ~10 min, a few cents | Home + Team tabs |
+| **12** | Core benchmark: 12 pairs, each run blind (no Loom) and with Loom. | 24 | ~5 min, ~$0.15 | `bench/results/e1.json` |
+| **36** | All 36 real-derived pairs, blind and with Loom. | 72 | ~12 min, ~$0.35 | same |
+| **108** | The full study: 36 pairs x 3 conditions (blind, oracle, Loom live). **108 runs, not 108 tasks.** | 108 | ~20 min, ~$0.60 | same, plus notice precision (E3) |
+
+A *pair* is two agents editing the same Django code at once: A (a scripted AST rewrite) makes a breaking change to a helper, B (a real
+Haiku agent) writes code that calls it. Grading is offline: B's patch alone, then merged with A's. **Blind** = B gets no information,
+**oracle** = B is told the exact change up front (the ceiling), **live** = Loom's hooks deliver the notice mid-work.
 
 **1. Run the StaleBench demo on Django (the hackathon demo)**
 
@@ -41,7 +54,7 @@ loom stalebench --pairs 36 --oracle     # 36 pairs x 3 conditions = 108 runs
 One pair is two agents editing the same Django code at once, one changing a helper the other calls. The 36 pairs are STALE-bench's
 real-derived tier (12 helper functions x 3 kinds of change); **108 is 36 pairs x 3 conditions, not 108 tasks**. The command clones the
 STALE-bench data and Django mirror for you, asks before spending tokens (Haiku by default, `--model sonnet` to change), then writes
-`bench/results/e1.json`, which the dashboard's Benchmark tab shows. Shipped results are the 12-pair core; the 36-pair and 108-run sets are not run.
+`bench/results/e1.json`, which the dashboard's Benchmark tab shows. Shipped results are the full 108-run set (below).
 
 **3. Use it on your own project (beta, may break)**
 
@@ -109,19 +122,19 @@ a frequency estimate: on mined real PR pairs the paper saw interference in 1 of 
 generated from `bench/results/*.json` by `bench/regen.sh`.
 
 <!-- bench:start -->
-**E1 — STALE-bench Django, 12 pairs × 3 conditions** (agent B's patch merged with A's; interference = passes alone, fails merged)
+**E1 — STALE-bench Django, 36 pairs × 3 conditions** (agent B's patch merged with A's; interference = passes alone, fails merged)
 
 | condition | n | B solo pass | merged pass | interference | rate | Δ vs blind | mean B s |
 |---|---|---|---|---|---|---|---|
-| blind | 12 | 12 | 0 | 12 | 100% | +0% | 19.6 |
-| oracle | 12 | 4 | 12 | 0 | 0% | -100% | 16.8 |
-| live | 12 | 3 | 12 | 0 | 0% | -100% | 29.7 |
+| blind | 36 | 36 | 0 | 36 | 100% | +0% | 17.7 |
+| oracle | 36 | 1 | 36 | 0 | 0% | -100% | 20.2 |
+| live | 36 | 13 | 24 | 12 | 33% | -67% | 29.9 |
 
 **E3 — notice precision (live condition)**: a notice is precise when it names the helper the pair conflicts on and the blind twin interfered.
 
 | delivered | precise | precision | notices / agent-hour | excluded (no blind twin) |
 |---|---|---|---|---|
-| 15 | 12 | 80% | 151.39 | 0 |
+| 43 | 34 | 79% | 143.91 | 0 |
 
 **E2 — lease race** (50 agents × 200 lease attempts on 20 symbols, one connection each; the control empties the CAS conflict matrix)
 
@@ -142,6 +155,17 @@ generated from `bench/results/*.json` by `bench/regen.sh`.
 
 Re-index on edit over all of django (10702 symbols, base index 1.8 s): p50 5.6 ms, p95 6.7 ms over 100 edits.
 <!-- bench:end -->
+
+**Reading the E1 table.** Blind: B's code passes alone in 36/36 and breaks once merged in 36/36, so the conflict is real. Oracle:
+told the change, B merges cleanly in 36/36, so the task is solvable. Live Loom closes two thirds of the gap (24/36 merge; interference
+100% to 33%). By kind of change: **signature 12/12, rename 9/12, return-type 3/12**. Return-type changes are Loom's weak spot: the notice
+arrives with the before/after code, but Haiku often keeps its own code and does not adapt it (8 of the 12 live failures were repeats of
+this on helpers like `capfirst`, `escape`, `urlencode`). That is model compliance, not a missing notice; a stronger model or a Stop-gate
+that forces a re-run against the new behaviour is the next lever. The 36 pairs are constructed (12 real helpers x 3 mechanisms) and are a
+stress test, not a frequency estimate. One run per pair, Haiku only, so treat small differences as noise.
+
+**Operational note.** FalkorDB is started with RDB snapshots off (`--save "" --stop-writes-on-bgsave-error no`), because a failed snapshot
+makes Redis refuse writes and the daemon then answers HTTP 500. The compose file and `loom up` set this.
 
 ## How it is built
 

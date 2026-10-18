@@ -118,7 +118,7 @@ def main() -> None:
     ap.add_argument("--skip-done", type=Path, default=None,
                     help="continue an earlier run dir: skip (id, cond, trial) already recorded with b_ok")
     a = ap.parse_args()
-    out_dir = a.skip_done or RUNS / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_dir = (a.skip_done.resolve() if a.skip_done else None) or RUNS / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
     rec_file = out_dir / "records.jsonl"
     recs = [json.loads(l) for l in rec_file.read_text().splitlines()] if rec_file.exists() else []

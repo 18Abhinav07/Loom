@@ -1,27 +1,37 @@
 {
   "conds": {
     "blind": {
-      "n": 12,
-      "solo_pass": 12,
+      "n": 36,
+      "solo_pass": 36,
       "merged_pass": 0,
-      "interference": 12,
+      "interference": 36,
       "interference_rate": 1.0,
-      "mean_b_seconds": 15.0,
-      "cost_usd": 0.047,
+      "mean_b_seconds": 17.7,
+      "cost_usd": 0.1665,
       "delta_vs_blind": 0.0
     },
+    "oracle": {
+      "n": 36,
+      "solo_pass": 1,
+      "merged_pass": 36,
+      "interference": 0,
+      "interference_rate": 0.0,
+      "mean_b_seconds": 20.2,
+      "cost_usd": 0.1869,
+      "delta_vs_blind": -1.0
+    },
     "live": {
-      "n": 12,
-      "solo_pass": 4,
-      "merged_pass": 8,
-      "interference": 4,
+      "n": 36,
+      "solo_pass": 13,
+      "merged_pass": 24,
+      "interference": 12,
       "interference_rate": 0.333,
-      "mean_b_seconds": 23.1,
-      "cost_usd": 0.0611,
+      "mean_b_seconds": 29.9,
+      "cost_usd": 0.2193,
       "delta_vs_blind": -0.667
     }
   },
   "excluded": 0,
-  "instances": 12,
-  "records": "runs/e1/20261018-123802"
+  "instances": 36,
+  "records": "runs/e1/20261018-142825"
 }
