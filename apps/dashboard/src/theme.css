@@ -708,3 +708,10 @@ main:has(.hero2){display:block;padding:0;min-height:calc(100vh - 64px)}
 .bwhy{margin:6px 0 12px;padding-left:20px;font-size:14px;line-height:1.7}
 .done-banner.bad{background:var(--bad-soft);color:var(--bad)}
 @media (prefers-reduced-motion:reduce){.threads path,.blob,.btn.pulse,.h2c h1 em{animation:none}}
+
+.scorecard { margin-bottom: 14px; }
+.sc-g { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+.sc-t { border: 1px solid var(--line, rgba(128,128,128,.25)); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.sc-t b { font-size: 20px; line-height: 1.2; }
+.sc-t span { font-size: 12px; opacity: .65; }
+.sc-t.good b { color: #2E9E6B; } .sc-t.bad b { color: #D9534F; }

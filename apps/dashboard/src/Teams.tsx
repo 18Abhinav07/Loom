@@ -1,3 +1,4 @@
+import { Scorecard } from './Score';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, couldNot, post, type Collision, type Team, type TeamAgent } from './api';
 import { agentColor, useRun, type LoomEvent, type Snapshot } from './stream';
@@ -278,6 +279,7 @@ export function Teams({ go }: { go?: (v: string) => void }) {
       </div>
       {tellOpen && <div className="card sp reveal" style={{ marginBottom: 16 }}><div className="cardrow"><input autoFocus aria-label="message to all agents" value={all} onChange={(e) => setAll(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && tellAll()} placeholder="Tell every agent…" /><button className="btn sm" disabled={!all.trim()} onClick={tellAll}>Send to all</button></div></div>}
       <p className="pgsub reveal" style={{ marginBottom: 14 }}>{current.goal} <span className="dim">· started {ago(current.startedAt)} by {startedBy(current)}</span></p>
+      <Scorecard t={current} extra={current.blind ? [] : [{ k: 'warnings sent', v: warned }, { k: 'functions locked now', v: snap.leases.length }, { k: 'Loom events', v: cols.length }]} />
       <div className="team">
         <div className="agents">
           {agents.map((a) => {

@@ -1,7 +1,8 @@
 // StaleBench: the comparison first (from /bench/compare), the raw records folded underneath. A missing result is shown as missing, never estimated.
 // Cost and wall-clock columns are never shown: the claim is correctness, not speed or price.
 import { useEffect, useState } from 'react';
-import { api, type Compare } from './api';
+import { api, type Compare, type Team } from './api';
+import { LiveVsLoom } from './Score';
 import { Empty } from './ui';
 import { getJson } from './stream';
 
@@ -61,7 +62,9 @@ export function Bench() {
   const [b, setB] = useState<Record<string, J> | null>(null);
   const [cmp, setCmp] = useState<Compare | null>(null);
   const [err, setErr] = useState('');
+  const [live, setLive] = useState<Team[]>([]);
   useEffect(() => {
+    api<Team[]>('/teams').then(setLive).catch(() => {});
     getJson<Record<string, J>>('/bench').then(setB).catch((e) => setErr(String(e)));
     api<Compare>('/bench/compare').then(setCmp).catch(() => {});
   }, []);
@@ -83,6 +86,7 @@ export function Bench() {
           <div className="bt good"><b>{e1.loom.broke}<small>/{e1.loom.n}</small></b><span>broke with Loom</span></div>
           <div className="bt"><b>{e1.blind.n}</b><span>task pairs run ({pairs[0] ? 'one per function' : 'E1 core'})</span></div>
         </section>)}
+      <section className="card sp"><h3>Live demo · this machine, just now</h3><LiveVsLoom teams={live} /></section>
       <p className="dim bscope">Scope: {e1 ? nOf(e1.blind.n) : 'E1'} of StaleBench, each run blind and with Loom. The 36-pair full set was not run. The live Django demo is one 3-task scenario, one run per side.</p>
       {cmp && (
         <section className="card sp">

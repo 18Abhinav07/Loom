@@ -1,3 +1,4 @@
+import { Scorecard } from './Score';
 import { useEffect, useState } from 'react';
 import { api, couldNot, type Team } from './api';
 import { agentColor } from './stream';
@@ -53,6 +54,7 @@ export function Blind({ go }: { go?: (v: string) => void }) {
         {cur.state === 'done' && <div className={`done-banner on ${cur.result?.pass ? '' : 'bad'}`}>{cur.result ? (cur.result.pass ? '✓ Finished · tests pass' : '✕ Finished · tests FAIL') : '✓ Finished'}</div>}
       </div>
       <p className="pgsub reveal" style={{ marginBottom: 14 }}>{cur.goal} <span className="dim">· started {ago(cur.startedAt)}. These agents cannot see each other: no locks, no warnings, no messages.</span></p>
+      <Scorecard t={cur} />
       <div className="bagents">
         {agents.map((a) => {
           const f = face(a, false); const c = agentColor(a.id); const k = checksOf(a);
