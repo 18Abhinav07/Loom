@@ -7,6 +7,7 @@ import { LoomDb, type LoomGraph } from '@loom/core';
 import { loadPlan } from '@loom/planner';
 import { regionsCmd } from './regions.js';
 import { stalebenchCmd } from './stalebench.js';
+import { dockerInstalled, startDocker } from './docker.js';
 import { exitCode, runPlan } from './run.js';
 import { teamCmd } from './team.js';
 import { resolveAttach, resolveRepo } from '@loom/daemon';
@@ -198,11 +199,12 @@ async function gitHook(name: string | undefined): Promise<number> {
 
 async function ensureDb(): Promise<number> {
   if (await pingDb()) return 0;
-  console.log('FalkorDB not reachable; starting it with docker compose');
-  try { execFileSync('docker', ['compose', '-f', join(loomRoot(), 'docker-compose.yml'), 'up', '-d', 'falkordb'], { stdio: 'inherit' }); }
-  catch { console.error('could not start FalkorDB: install Docker Desktop (or run any FalkorDB on :6379) and retry'); return 1; }
-  for (let i = 0; i < 30; i++) { if (await pingDb()) return 0; await sleep(1000); }
-  console.error('FalkorDB did not come up in 30s'); return 1;
+  if (!startDocker()) { console.error(dockerInstalled() ? 'Docker did not come up in 2 minutes' : 'FalkorDB needs Docker (https://docs.docker.com/get-docker/), or run any FalkorDB on :6379'); return 1; }
+  console.log('FalkorDB not reachable; starting it with docker compose (the first run pulls the image)');
+  try { execFileSync('docker', ['compose', '-f', join(loomRoot(), 'docker-compose.yml'), 'up', '-d', '--wait', 'falkordb'], { stdio: 'inherit' }); }
+  catch { try { execFileSync('docker', ['compose', '-f', join(loomRoot(), 'docker-compose.yml'), 'up', '-d', 'falkordb'], { stdio: 'inherit' }); } catch { console.error('could not start FalkorDB with docker compose'); return 1; } }
+  for (let i = 0; i < 120; i++) { if (await pingDb()) return 0; await sleep(1000); }
+  console.error('FalkorDB did not answer in 2 minutes'); return 1;
 }
 
 /** The checkout's commit: a daemon started from older source must not keep serving after a pull (it ran a stale start_team and dropped blind). */

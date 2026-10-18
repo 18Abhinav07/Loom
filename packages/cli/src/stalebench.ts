@@ -1,6 +1,7 @@
 // `loom stalebench`: runs the StaleBench (Django) benchmark yourself. Sizes name what they are:
 //   --pairs 12  core set, 12 held-out task pairs   --pairs 36  all 36 real-derived pairs
 // Each pair runs once per condition (blind, live; add --oracle for the third): 12 pairs x 2 = 24 runs, 36 x 3 = 108.
+import { dockerInstalled, dockerUp, startDocker } from './docker.js';
 import { spawnSync } from 'node:child_process';
 import { subscriptionEnv } from '@loom/core';
 import { existsSync, readdirSync, realpathSync } from 'node:fs';
@@ -55,18 +56,11 @@ export async function stalebenchCmd(rest: string[]): Promise<number> {
   const claude = spawnSync('claude', ['--version']);
   if (claude.status !== 0) { console.error('need the Claude Code CLI (`claude`) on PATH'); return 1; }
   console.log('ok  claude CLI');
-  const up = () => spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
-  if (!up()) {
-    if (spawnSync('docker', ['--version'], { stdio: 'ignore' }).status !== 0) { console.error('need Docker installed (FalkorDB runs in it): https://docs.docker.com/get-docker/'); return 1; }
+  if (!dockerUp()) {
+    if (!dockerInstalled()) { console.error('need Docker installed (FalkorDB runs in it): https://docs.docker.com/get-docker/'); return 1; }
     if (rest.includes('--check')) console.log('  docker not running: will be started on a real run');
-    else {
-      console.log('starting Docker…');
-      if (process.platform === 'darwin') spawnSync('open', ['-a', 'Docker'], { stdio: 'ignore' });
-      else spawnSync('sudo', ['-n', 'systemctl', 'start', 'docker'], { stdio: 'ignore' });
-      for (let i = 0; i < 60 && !up(); i++) spawnSync('sleep', ['2']);
-      if (!up()) { console.error('Docker did not come up in 2 minutes: start it yourself and retry'); return 1; }
-      console.log('ok  docker started');
-    }
+    else if (!startDocker()) { console.error('Docker did not come up in 2 minutes: start it yourself and retry'); return 1; }
+    else console.log('ok  docker started');
   } else console.log('ok  docker');
   if (rest.includes('--check')) { console.log(`\nready. a real run would cost ${runs} Claude sessions. start it with: loom stalebench --pairs ${pairs}${oracle ? ' --oracle' : ''}`); return 0; }
 
