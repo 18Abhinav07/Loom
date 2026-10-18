@@ -1,4 +1,5 @@
 import { Scorecard } from './Score';
+import { PairGrid } from './PairGrid';
 import { useEffect, useState } from 'react';
 import { api, couldNot, type Team } from './api';
 import { agentColor } from './stream';
@@ -37,13 +38,15 @@ function Verdict({ t }: { t: Team }) {
 export function Blind({ go }: { go?: (v: string) => void }) {
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [err, setErr] = useState('');
+  const [pick, setPick] = useState('');
   useEffect(() => {
     const poll = () => api<Team[]>('/teams').then((t) => { setErr(''); setTeams(t); }).catch((e) => setErr(couldNot('teams', e)));
     poll(); const i = setInterval(poll, 2000); return () => clearInterval(i);
   }, []);
   if (err) return <Problem msg={err} />;
   if (!teams) return <p className="dim">loading…</p>;
-  const cur = [...teams].filter((t) => t.blind).sort((a, b) => b.startedAt - a.startedAt)[0];
+  const mine = [...teams].filter((t) => t.blind).sort((a, b) => b.startedAt - a.startedAt);
+  const cur = mine.find((t) => t.id === pick) ?? mine.find((t) => t.state === 'running') ?? mine[0];
   if (!cur) return <section className="screen on page"><div className="card onboard reveal"><Bot color="#9A988F" size={56} /><h3>No run without Loom yet</h3><p>Press Plan. The three agents without Loom appear here as soon as they start.</p><button className="btn or" onClick={() => go?.('home')}>Back to Home</button></div></section>;
   const agents = cur.agents; const landed = agents.filter((a) => a.state === 'landed').length;
   return (
@@ -54,6 +57,7 @@ export function Blind({ go }: { go?: (v: string) => void }) {
         {cur.state === 'done' && <div className={`done-banner on ${cur.result?.pass ? '' : 'bad'}`}>{cur.result ? (cur.result.pass ? '✓ Finished · tests pass' : '✕ Finished · tests FAIL') : '✓ Finished'}</div>}
       </div>
       <p className="pgsub reveal" style={{ marginBottom: 14 }}>{cur.goal} <span className="dim">· started {ago(cur.startedAt)}. These agents cannot see each other: no locks, no warnings, no messages.</span></p>
+      <PairGrid teams={mine} current={cur.id} onPick={setPick} />
       <Scorecard t={cur} />
       <div className="bagents">
         {agents.map((a) => {

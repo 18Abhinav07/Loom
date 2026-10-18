@@ -722,3 +722,11 @@ main:has(.hero2){display:block;padding:0;min-height:calc(100vh - 64px)}
 .brs { display: flex; flex-direction: column; gap: 3px; border-radius: 10px; padding: 9px 11px; background: rgba(128,128,128,.08); font-size: 12px; }
 .brs b { font-size: 14px; } .brs.ok b { color: #2E9E6B; } .brs.bad b { color: #D9534F; } .brs.wait b { opacity: .5; }
 .brs small.bad { color: #D9534F; }
+.pgrid .h small{font-weight:400;color:var(--dim,#8a877d);margin-left:8px}
+.pg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px}
+.pgc{text-align:left;border:1px solid rgba(0,0,0,.1);border-radius:10px;padding:8px 10px;background:transparent;cursor:pointer;display:flex;flex-direction:column;gap:2px;font:inherit}
+.pgc b{font-size:12px;word-break:break-all}.pgc small{font-size:11px;color:#8a877d}
+.pgc.sel{outline:2px solid #c9785c}.pgc.held{border-color:#7aa77a}.pgc.broke{border-color:#c9785c}.pgc.running{border-color:#d8b25a}
+.pgs{font-size:11px;display:flex;align-items:center;gap:4px}.pgs em{margin-left:auto;font-style:normal;font-weight:600}
+.pgs .d{width:8px;height:8px;border-radius:50%;display:inline-block;background:#bbb}.pgs .d.ok{background:#5b9b5b}.pgs .d.bad{background:#c9785c}.pgs .d.run{background:#d8b25a;animation:pgp 1s infinite}
+@keyframes pgp{50%{opacity:.35}}
