@@ -5,10 +5,10 @@ import { ago, filesText, landText, startedBy } from './explain';
 import { Bot, Problem } from './ui';
 
 const WORKING = new Set(['running', 'pending']);
-type Face = 'idle' | 'working' | 'waiting' | 'landing' | 'sentback' | 'landed';
-const FACE_TEXT: Record<Face, string> = { idle: 'Starting', working: 'Working', waiting: 'Waiting', landing: 'Being checked', sentback: 'Sent back', landed: 'Landed' };
-const lastLand = (a: TeamAgent) => a.lands[a.lands.length - 1];
-function face(a: TeamAgent, waiting: boolean): Face {
+export type Face = 'idle' | 'working' | 'waiting' | 'landing' | 'sentback' | 'landed';
+export const FACE_TEXT: Record<Face, string> = { idle: 'Starting', working: 'Working', waiting: 'Waiting', landing: 'Being checked', sentback: 'Sent back', landed: 'Landed' };
+export const lastLand = (a: TeamAgent) => a.lands[a.lands.length - 1];
+export function face(a: TeamAgent, waiting: boolean): Face {
   if (a.state === 'landed') return 'landed';
   if (a.state === 'failed' || a.state === 'stopped' || a.state === 'blocked') return 'sentback';
   if (waiting) return 'waiting';
@@ -129,7 +129,7 @@ function Floor({ snap, agents, collisions, goMap }: { snap: Snapshot; agents: Te
 }
 
 // ---- landing checks ------------------------------------------------------------------------------------------------------------
-function checksOf(a: TeamAgent): { cells: ('ok' | 'no' | 'run' | '')[]; res: string; color: string; why: string; tries: number } {
+export function checksOf(a: TeamAgent): { cells: ('ok' | 'no' | 'run' | '')[]; res: string; color: string; why: string; tries: number } {
   const l = lastLand(a); const tries = a.lands.length;
   if (a.state === 'landed' || l === 'landed') return { cells: ['ok', 'ok', 'ok'], res: 'Landed', color: 'var(--good)', why: '', tries };
   if (!l) return { cells: a.state === 'idle' ? ['run', '', ''] : ['', '', ''], res: a.state === 'idle' ? 'Being checked…' : 'Not finished yet', color: 'var(--ink3)', why: '', tries };
