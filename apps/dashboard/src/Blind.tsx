@@ -16,7 +16,7 @@ export function readVerdict(out: string) {
 }
 
 function Verdict({ t }: { t: Team }) {
-  if (t.state === 'running') return <div className="card sp reveal"><div className="h">Test result</div><p className="dim">The three agents are still working. The tests run on the combined result when all of them are done.</p></div>;
+  if (t.state === 'running') return <div className="card sp reveal"><div className="h">Test result</div><p className="dim">The four agents are still working. The tests run on the combined result when all of them are done.</p></div>;
   if (!t.result) return <div className="card sp reveal"><div className="h">Test result</div><p className="dim">The team finished without a test result.</p></div>;
   const v = readVerdict(t.result.out); const ok = t.result.pass;
   return (

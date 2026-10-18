@@ -9,7 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 
 const flag = (a: string[], name: string) => { const i = a.indexOf(name); return i >= 0 ? a[i + 1] : undefined; };
 const STALE_URL = 'https://github.com/illinoisdata/STALE-bench';
-const USAGE = 'usage: loom stalebench [--pairs 12|36] [--oracle] [--model haiku|sonnet] [--trials N] [--check] [--yes]\n  --pairs 12  core set (default): 12 pairs x blind+live = 24 runs\n  --pairs 36  all pairs: 36 x 2 = 72 runs; with --oracle 36 x 3 = 108 runs\n  --check     verify everything is installed, spend nothing';
+const USAGE = 'usage: loom stalebench [--pairs 12|36] [--oracle] [--model haiku|sonnet] [--trials N] [--jobs N] [--teams] [--check] [--yes]\n  --pairs 12  core set (default): 12 pairs x blind+live = 24 runs\n  --pairs 36  all pairs: 36 x 2 = 72 runs; with --oracle 36 x 3 = 108 runs\n  --jobs N    run N agents in parallel (default 4)\n  --teams     run each pair as a visible 2-agent team (watch the Team and Without Loom tabs); runs one at a time\n  --check     verify everything is installed, spend nothing';
 
 const sh = (cmd: string, args: string[], cwd: string) => spawnSync(cmd, args, { cwd, stdio: 'inherit' }).status === 0;
 const root = () => resolve(dirname(realpathSync(process.argv[1] ?? __filename)), '..', '..', '..');
@@ -74,7 +74,11 @@ export async function stalebenchCmd(rest: string[]): Promise<number> {
   const runsDir = join(bench, 'runs', 'e1');
   const before = new Set(existsSync(runsDir) ? readdirSync(runsDir) : []);
   const env = subscriptionEnv(process.env);
-  const run = spawnSync(venv, ['-m', 'e1.run', '--set', pairs === '36' ? 'all' : 'core', '--conds', conds, '--trials', trials, '--model', model], { cwd: bench, stdio: 'inherit', env });
+  if (rest.includes('--teams')) {
+    const t = spawnSync(venv, ['-m', 'e1.team_run', '--set', pairs === '36' ? 'all' : 'core', '--conds', 'blind,live', '--model', model], { cwd: bench, stdio: 'inherit', env });
+    return t.status === 0 ? 0 : 1;
+  }
+  const run = spawnSync(venv, ['-m', 'e1.run', '--set', pairs === '36' ? 'all' : 'core', '--conds', conds, '--trials', trials, '--model', model, '--jobs', flag(rest, '--jobs') ?? '4'], { cwd: bench, stdio: 'inherit', env });
   if (run.status !== 0 && !existsSync(runsDir)) { console.error('the benchmark failed before recording anything'); return 1; }
   const fresh = (existsSync(runsDir) ? readdirSync(runsDir) : []).filter((d) => !before.has(d)).sort().pop();
   if (!fresh || !existsSync(join(runsDir, fresh, 'records.jsonl'))) { console.error('the run produced no records'); return 1; }

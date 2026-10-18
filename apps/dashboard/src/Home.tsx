@@ -3,8 +3,8 @@ import { api, type Team } from './api';
 
 type Go = (view: string, say?: string) => void;
 
-/** What the Lead is asked when someone presses Plan: the StaleBench run, three Haiku agents each side. */
-export const STALEBENCH_ASK = 'Run the StaleBench workflow on this repo: check plan django-stalebench, then start it twice with model haiku: once with blind:true (three agents without Loom) and once normally (three agents with Loom). Report when both finish.';
+/** What the Lead is asked when someone presses Plan: the StaleBench run, four Haiku agents each side. */
+export const STALEBENCH_ASK = 'Run the StaleBench workflow on this repo: check plan django-stalebench, then start it twice with model haiku: once with blind:true (four agents without Loom) and once normally (four agents with Loom). Report when both finish.';
 
 const status = (t: Team | null): [string, string] => !t ? ['idle', 'Starts when you press Plan'] : t.state === 'running' ? ['run', 'Running now'] : t.result ? (t.result.pass ? ['ok', 'Finished · tests pass'] : ['bad', 'Finished · tests fail']) : ['idle', t.state === 'done' ? 'Finished' : t.state];
 
@@ -36,8 +36,8 @@ export function Home({ go, plan }: { go: Go; plan: () => void }) {
       <div className="blob b1" /><div className="blob b2" />
       <div className="h2c">
         <span className="h5chip reveal"><span className="ldot" /><b>StaleBench</b> · Django · 3 Claude Haiku agents each side</span>
-        <h1 className="reveal" style={{ '--i': 1 } as never}>Three agents, one function.<br /><em>Without Loom they collide.</em></h1>
-        <p className="reveal" style={{ '--i': 2 } as never}>The same three tasks, run twice: once by agents that cannot see each other, once by agents sharing Loom's memory.</p>
+        <h1 className="reveal" style={{ '--i': 1 } as never}>Four agents, one function.<br /><em>Without Loom they collide.</em></h1>
+        <p className="reveal" style={{ '--i': 2 } as never}>The same four tasks, run twice: once by agents that cannot see each other, once by agents sharing Loom's memory.</p>
         <div className="reveal" style={{ '--i': 3 } as never}><button className="btn or xl pulse" onClick={plan}>Plan the run →</button></div>
         <div className="sides reveal" style={{ '--i': 4 } as never}>
           <Side title="Without Loom" text="Blind agents: no locks, no warnings, no messages. They edit the same code and find out at the end." t={blind} to="blind" idle="Opens when the run starts" />

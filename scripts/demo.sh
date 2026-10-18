@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One command after cloning Loom: installs everything, asks what to run, opens the dashboard, runs it.
 #   ./scripts/demo.sh                 pick interactively
-#   ./scripts/demo.sh live            Django demo: 3 agents without Loom vs 3 with (you press Plan)
+#   ./scripts/demo.sh live            Django demo: 4 agents without Loom vs 4 with (you press Plan)
 #   ./scripts/demo.sh 12|36|108       StaleBench: 12 pairs (24 runs), 36 pairs (72), 36 pairs x 3 conditions (108)
 #   env: MODEL=haiku|sonnet (default haiku)  DJANGO_DIR=<loom>/django  YES=1 (skip the token confirmation)
 set -euo pipefail
@@ -35,7 +35,7 @@ CHOICE="${1:-}"
 if [ -z "$CHOICE" ]; then
   say "what do you want to run?"
   cat <<'M'
-  1) live    Django demo: 3 agents without Loom, then 3 with Loom, watched in the dashboard   (6 agent runs)
+  1) live    Django demo: 4 agents without Loom, then 4 with Loom, watched in the dashboard   (8 agent runs)
   2) 12      StaleBench core: 12 pairs, blind vs Loom                                          (24 agent runs)
   3) 36      StaleBench: all 36 real-derived pairs, blind vs Loom                              (72 agent runs)
   4) 108     36 pairs x 3 conditions (blind, oracle, Loom)                                     (108 agent runs)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import threading
 import sys
 import textwrap
 from pathlib import Path
@@ -44,18 +45,23 @@ def ensure_mirror() -> Path:
     return MIRROR
 
 
+_WT_LOCK = threading.Lock()   # git's worktree metadata is not safe to change from several runs at once
+
+
 def make_worktree(base: str, dest: Path) -> Path:
     ensure_mirror()
     if dest.exists():
         remove_worktree(dest)
-    _git("--git-dir", str(MIRROR), "worktree", "add", "--detach", str(dest), base)
+    with _WT_LOCK:
+        _git("--git-dir", str(MIRROR), "worktree", "add", "--detach", str(dest), base)
     return dest
 
 
 def remove_worktree(dest: Path) -> None:
-    _git("--git-dir", str(MIRROR), "worktree", "remove", "--force", str(dest), check=False)
-    shutil.rmtree(dest, ignore_errors=True)
-    _git("--git-dir", str(MIRROR), "worktree", "prune", check=False)
+    with _WT_LOCK:
+        _git("--git-dir", str(MIRROR), "worktree", "remove", "--force", str(dest), check=False)
+        shutil.rmtree(dest, ignore_errors=True)
+        _git("--git-dir", str(MIRROR), "worktree", "prune", check=False)
 
 
 def diff(wt: Path, exclude: tuple[str, ...] = ("tests", ".claude")) -> str:

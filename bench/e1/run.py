@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
 import json
 import os
@@ -10,7 +12,7 @@ from pathlib import Path
 
 from .agent_b import build_prompt, run_b
 from .amech import describe_change
-from .django_ws import BENCH, diff, make_worktree, remove_worktree
+from .django_ws import BENCH, a_patch, diff, make_worktree, remove_worktree
 from .grade import grade
 from .instances import CORE, PILOT, Instance, load_instances
 
@@ -88,6 +90,7 @@ def main() -> None:
     ap.add_argument("--set", default="pilot")
     ap.add_argument("--trials", type=int, default=1)
     ap.add_argument("--model", default="sonnet")
+    ap.add_argument("--jobs", type=int, default=4, help="runs in parallel (each is an independent agent in its own worktree)")
     ap.add_argument("--a-at", default="edit", choices=["edit", "read", "t0"])
     ap.add_argument("--skip-done", type=Path, default=None,
                     help="continue an earlier run dir: skip (id, cond, trial) already recorded with b_ok")
@@ -97,21 +100,33 @@ def main() -> None:
     rec_file = out_dir / "records.jsonl"
     recs = [json.loads(l) for l in rec_file.read_text().splitlines()] if rec_file.exists() else []
     done = {(r["id"], r["cond"], r["trial"]) for r in recs if r.get("b_ok")}
-    for inst in select(a.set):
-        for cond in a.conds.split(","):
-            for t in range(a.trials):
-                if (inst.id, cond, t) in done:
-                    continue
-                r = run_one(inst, cond, t, a.model, out_dir, a.a_at)
-                recs.append(r)
-                with open(rec_file, "a") as f:
-                    f.write(json.dumps(r) + "\n")
-                print(f"{r['id']:32} {cond:6} ok={r['b_ok']!s:5} solo={r['solo_pass']!s:5} "
-                      f"merged={r['merged_pass']!s:5} intf={r['interference']} {r['b_seconds']}s", flush=True)
-                if not r["b_ok"] and "limit" in Path(r["transcript"]).read_text()[-2000:].lower():
-                    # Subscription usage window exhausted: stop cleanly; rerun later with --skip-done <out_dir>.
-                    print(f"usage limit reached; continue with: python -m e1.run ... --skip-done {out_dir}")
-                    raise SystemExit(3)
+    todo = [(inst, cond, t) for inst in select(a.set) for cond in a.conds.split(",") for t in range(a.trials)
+            if (inst.id, cond, t) not in done]
+    lock, stop = threading.Lock(), threading.Event()
+    if "live" in a.conds.split(","):
+        for inst in {j[0].id: j[0] for j in todo}.values():
+            a_patch(inst)   # build A's patch once, up front, so parallel runs of one pair never build it at the same time
+
+    def work(job):
+        inst, cond, t = job
+        if stop.is_set():
+            return
+        r = run_one(inst, cond, t, a.model, out_dir, a.a_at)
+        with lock:
+            recs.append(r)
+            with open(rec_file, "a") as f:
+                f.write(json.dumps(r) + "\n")
+            print(f"{r['id']:32} {cond:6} ok={r['b_ok']!s:5} solo={r['solo_pass']!s:5} "
+                  f"merged={r['merged_pass']!s:5} intf={r['interference']} {r['b_seconds']}s", flush=True)
+        if not r["b_ok"] and "limit" in Path(r["transcript"]).read_text()[-2000:].lower():
+            stop.set()  # subscription usage window exhausted: stop cleanly; rerun later with --skip-done <out_dir>
+
+    # Each run is its own agent process in its own worktree, so they are independent and can overlap.
+    with ThreadPoolExecutor(max_workers=max(1, a.jobs)) as ex:
+        list(ex.map(work, todo))
+    if stop.is_set():
+        print(f"usage limit reached; continue with: python -m e1.run ... --skip-done {out_dir}")
+        raise SystemExit(3)
     print(summarize([r for r in recs if r.get("b_ok")]))
     print(f"records: {out_dir / 'records.jsonl'}")
 
